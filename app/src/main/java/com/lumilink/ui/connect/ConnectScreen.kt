@@ -1,0 +1,175 @@
+package com.lumilink.ui.connect
+
+import android.Manifest
+import android.content.pm.PackageManager
+import android.os.Build
+import androidx.activity.compose.rememberLauncherForActivityResult
+import androidx.activity.result.contract.ActivityResultContracts
+import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.text.KeyboardOptions
+import androidx.compose.foundation.verticalScroll
+import androidx.compose.material3.Button
+import androidx.compose.material3.Card
+import androidx.compose.material3.CardDefaults
+import androidx.compose.material3.ExperimentalMaterial3Api
+import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.OutlinedTextField
+import androidx.compose.material3.Scaffold
+import androidx.compose.material3.Text
+import androidx.compose.material3.TopAppBar
+import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.saveable.rememberSaveable
+import androidx.compose.runtime.setValue
+import androidx.compose.ui.Modifier
+import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.text.input.KeyboardType
+import androidx.compose.ui.text.input.PasswordVisualTransformation
+import androidx.compose.ui.unit.dp
+import androidx.core.content.ContextCompat
+import androidx.lifecycle.compose.collectAsStateWithLifecycle
+import androidx.lifecycle.viewmodel.compose.viewModel
+import com.lumilink.model.ConnectionState
+import com.lumilink.ui.appContainer
+
+/**
+ * Connect screen — enter the camera hotspot's SSID + password (prefilled once saved), request the
+ * Wi-Fi permission if needed, then connect. Navigates on to the gallery once connected.
+ *
+ * @param onConnected called when the camera link is established.
+ */
+@OptIn(ExperimentalMaterial3Api::class)
+@Composable
+fun ConnectScreen(onConnected: () -> Unit) {
+    val container = appContainer()
+    val viewModel: ConnectViewModel = viewModel(factory = ConnectViewModel.factory(container))
+
+    val state by viewModel.connectionState.collectAsStateWithLifecycle()
+    val saved by viewModel.savedCredentials.collectAsStateWithLifecycle()
+
+    var ssid by rememberSaveable { mutableStateOf("") }
+    var password by rememberSaveable { mutableStateOf("") }
+
+    // Prefill fields from saved credentials the first time they load (don't clobber user edits).
+    LaunchedEffect(saved) {
+        val savedCreds = saved
+        if (savedCreds != null && ssid.isBlank()) {
+            ssid = savedCreds.ssid
+            password = savedCreds.passphrase
+        }
+    }
+
+    // Advance to the gallery once we're connected.
+    LaunchedEffect(state) {
+        if (state is ConnectionState.Connected) onConnected()
+    }
+
+    val context = LocalContext.current
+    // Connecting to a Wi-Fi network with a specifier requires this runtime permission:
+    // NEARBY_WIFI_DEVICES on Android 13+, otherwise fine location.
+    val wifiPermission = remember {
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
+            Manifest.permission.NEARBY_WIFI_DEVICES
+        } else {
+            Manifest.permission.ACCESS_FINE_LOCATION
+        }
+    }
+    val permissionLauncher = rememberLauncherForActivityResult(
+        ActivityResultContracts.RequestPermission(),
+    ) { granted ->
+        if (granted) viewModel.connect(ssid, password)
+    }
+
+    val attemptConnect = {
+        val alreadyGranted = ContextCompat.checkSelfPermission(context, wifiPermission) ==
+            PackageManager.PERMISSION_GRANTED
+        if (alreadyGranted) {
+            viewModel.connect(ssid, password)
+        } else {
+            permissionLauncher.launch(wifiPermission)
+        }
+    }
+
+    val connecting = state is ConnectionState.Connecting
+
+    Scaffold(topBar = { TopAppBar(title = { Text("LumiLink") }) }) { innerPadding ->
+        Column(
+            modifier = Modifier
+                .fillMaxSize()
+                .padding(innerPadding)
+                .verticalScroll(rememberScrollState())
+                .padding(24.dp),
+            verticalArrangement = Arrangement.spacedBy(16.dp),
+        ) {
+            ConnectionStatusCard(state)
+
+            OutlinedTextField(
+                value = ssid,
+                onValueChange = { ssid = it },
+                label = { Text("Camera Wi-Fi name (SSID)") },
+                singleLine = true,
+                modifier = Modifier.fillMaxWidth(),
+            )
+
+            OutlinedTextField(
+                value = password,
+                onValueChange = { password = it },
+                label = { Text("Wi-Fi password") },
+                singleLine = true,
+                visualTransformation = PasswordVisualTransformation(),
+                keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Password),
+                modifier = Modifier.fillMaxWidth(),
+            )
+
+            Button(
+                onClick = attemptConnect,
+                enabled = !connecting && ssid.isNotBlank() && password.isNotBlank(),
+                modifier = Modifier.fillMaxWidth(),
+            ) {
+                Text(if (connecting) "Connecting…" else "Connect to camera")
+            }
+
+            Spacer(Modifier.height(4.dp))
+            Text(
+                text = "On the camera: Wi-Fi → New Connection → Remote Shooting & View, then enter " +
+                    "that hotspot's name and password here. The first connection shows a one-time " +
+                    "Android prompt; after that it connects automatically.",
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+            )
+        }
+    }
+}
+
+/** Small status banner reflecting the current [ConnectionState]. */
+@Composable
+private fun ConnectionStatusCard(state: ConnectionState) {
+    val message = when (state) {
+        is ConnectionState.NeedsSetup -> "Enter your camera's Wi-Fi details to begin."
+        is ConnectionState.Idle -> "Not connected."
+        is ConnectionState.Connecting -> "Connecting… accept the Android prompt if it appears."
+        is ConnectionState.Connected -> "Connected to ${state.ssid}."
+        is ConnectionState.Failed -> state.reason
+    }
+    val containerColor = when (state) {
+        is ConnectionState.Connected -> MaterialTheme.colorScheme.primaryContainer
+        is ConnectionState.Failed -> MaterialTheme.colorScheme.errorContainer
+        else -> MaterialTheme.colorScheme.surfaceVariant
+    }
+    Card(
+        colors = CardDefaults.cardColors(containerColor = containerColor),
+        modifier = Modifier.fillMaxWidth(),
+    ) {
+        Text(message, modifier = Modifier.padding(16.dp), style = MaterialTheme.typography.bodyMedium)
+    }
+}

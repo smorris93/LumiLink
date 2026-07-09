@@ -1,0 +1,6 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <!-- App-level window theme (light). Actual UI colors come from Compose (LumiLinkTheme);
+         this only styles the window before Compose draws. -->
+    <style name="Theme.LumiLink" parent="android:Theme.Material.Light.NoActionBar" />
+</resources>

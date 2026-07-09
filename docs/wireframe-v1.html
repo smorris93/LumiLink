@@ -1,0 +1,391 @@
+<title>LumiLink — Wireframe v1</title>
+<style>
+  :root {
+    --bg: #F4F2ED;
+    --board: #E7E3DC;
+    --panel: #FFFFFF;
+    --sub: #FBFAF8;
+    --ink: #1F2124;
+    --muted: #75706A;
+    --faint: #A7A199;
+    --line: #DCD8D0;
+    --line-strong: #C9C4BB;
+    --accent: #9E6518;
+    --accent-soft: #F0E6D3;
+    --on-accent: #FFFFFF;
+    --good: #3C8A63;
+    --good-soft: #E1EFE7;
+    --crit: #C0473B;
+    --crit-soft: #F5E2DF;
+    --live: #1C1F24;
+    --live-line: rgba(255,255,255,.16);
+    --shadow: 0 1px 2px rgba(30,25,15,.06), 0 8px 24px rgba(30,25,15,.08);
+    --mono: ui-monospace, "SF Mono", "Cascadia Code", "Roboto Mono", Menlo, monospace;
+    --sans: system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root {
+      --bg: #101215; --board: #0B0D0F; --panel: #1A1D21; --sub: #212429;
+      --ink: #E9E7E2; --muted: #948F87; --faint: #6A655E;
+      --line: #2A2D32; --line-strong: #383B41;
+      --accent: #E0A63E; --accent-soft: #362D1B; --on-accent: #16130B;
+      --good: #5EB183; --good-soft: #1E2C24; --crit: #D9695D; --crit-soft: #33211E;
+      --live: #0B0D0F; --live-line: rgba(255,255,255,.12);
+      --shadow: 0 1px 2px rgba(0,0,0,.4), 0 10px 28px rgba(0,0,0,.45);
+    }
+  }
+  :root[data-theme="light"] {
+    --bg: #F4F2ED; --board: #E7E3DC; --panel: #FFFFFF; --sub: #FBFAF8;
+    --ink: #1F2124; --muted: #75706A; --faint: #A7A199;
+    --line: #DCD8D0; --line-strong: #C9C4BB;
+    --accent: #9E6518; --accent-soft: #F0E6D3; --on-accent: #FFFFFF;
+    --good: #3C8A63; --good-soft: #E1EFE7; --crit: #C0473B; --crit-soft: #F5E2DF;
+    --live: #1C1F24; --live-line: rgba(255,255,255,.16);
+    --shadow: 0 1px 2px rgba(30,25,15,.06), 0 8px 24px rgba(30,25,15,.08);
+  }
+  :root[data-theme="dark"] {
+    --bg: #101215; --board: #0B0D0F; --panel: #1A1D21; --sub: #212429;
+    --ink: #E9E7E2; --muted: #948F87; --faint: #6A655E;
+    --line: #2A2D32; --line-strong: #383B41;
+    --accent: #E0A63E; --accent-soft: #362D1B; --on-accent: #16130B;
+    --good: #5EB183; --good-soft: #1E2C24; --crit: #D9695D; --crit-soft: #33211E;
+    --live: #0B0D0F; --live-line: rgba(255,255,255,.12);
+    --shadow: 0 1px 2px rgba(0,0,0,.4), 0 10px 28px rgba(0,0,0,.45);
+  }
+
+  * { box-sizing: border-box; }
+  body { margin: 0; background: var(--bg); color: var(--ink); font-family: var(--sans);
+    -webkit-font-smoothing: antialiased; line-height: 1.5; }
+  .wrap { max-width: 1180px; margin: 0 auto; padding: 40px 24px 64px; }
+
+  /* ---- page header ---- */
+  .masthead { display: flex; flex-wrap: wrap; align-items: flex-end; justify-content: space-between;
+    gap: 20px; border-bottom: 1px solid var(--line); padding-bottom: 22px; margin-bottom: 8px; }
+  .brand { display: flex; align-items: center; gap: 12px; }
+  .logo { width: 34px; height: 34px; border-radius: 9px; background: var(--accent);
+    display: grid; place-items: center; color: var(--on-accent); flex: none; }
+  h1 { font-size: 22px; margin: 0; letter-spacing: -.02em; font-weight: 650; }
+  .eyebrow { font-family: var(--mono); font-size: 11px; letter-spacing: .12em; text-transform: uppercase;
+    color: var(--accent); margin: 0 0 3px; }
+  .lede { color: var(--muted); font-size: 14px; max-width: 46ch; margin: 4px 0 0; }
+  .flowkey { display: flex; gap: 6px; font-family: var(--mono); font-size: 11px; color: var(--muted);
+    align-items: center; }
+  .flowkey b { color: var(--accent); font-weight: 600; }
+
+  /* ---- board of phones ---- */
+  .board { background: var(--board); border: 1px solid var(--line); border-radius: 20px;
+    margin-top: 28px; padding: 34px 20px; display: flex; flex-wrap: wrap; gap: 30px;
+    justify-content: center; }
+  .col { width: 290px; max-width: 100%; }
+  .steplabel { display: flex; align-items: baseline; gap: 8px; margin: 0 4px 12px; }
+  .stepno { font-family: var(--mono); font-size: 12px; color: var(--on-accent); background: var(--accent);
+    width: 20px; height: 20px; border-radius: 6px; display: grid; place-items: center; font-weight: 600; flex: none; }
+  .steptitle { font-size: 13px; font-weight: 600; letter-spacing: -.01em; }
+
+  /* ---- phone shell ---- */
+  .phone { background: var(--panel); border: 1px solid var(--line-strong); border-radius: 30px;
+    box-shadow: var(--shadow); overflow: hidden; height: 592px; display: flex; flex-direction: column; }
+  .statusbar { display: flex; justify-content: space-between; align-items: center; padding: 9px 18px 5px;
+    font-family: var(--mono); font-size: 11px; color: var(--muted); }
+  .statusbar .sig { display: flex; gap: 5px; align-items: center; }
+  .appbar { display: flex; align-items: center; justify-content: space-between; padding: 6px 16px 12px;
+    border-bottom: 1px solid var(--line); }
+  .appbar h2 { font-size: 15px; margin: 0; font-weight: 600; letter-spacing: -.01em; }
+  .appbar .sub { font-family: var(--mono); font-size: 11px; color: var(--muted); }
+  .content { flex: 1; overflow: hidden; padding: 14px 16px; display: flex; flex-direction: column; gap: 12px; }
+
+  /* generic bits */
+  .chip { display: inline-flex; align-items: center; gap: 6px; font-family: var(--mono); font-size: 11px;
+    padding: 3px 9px; border-radius: 999px; border: 1px solid var(--line-strong); color: var(--muted);
+    background: var(--sub); }
+  .chip .dot { width: 7px; height: 7px; border-radius: 50%; background: var(--faint); flex: none; }
+  .chip.ok { color: var(--good); border-color: var(--good); background: var(--good-soft); }
+  .chip.ok .dot { background: var(--good); }
+  .chip.rec { color: var(--crit); border-color: var(--crit); background: var(--crit-soft); }
+  .chip.rec .dot { background: var(--crit); }
+
+  .card { background: var(--sub); border: 1px solid var(--line); border-radius: 14px; padding: 14px; }
+  .kv { display: flex; justify-content: space-between; align-items: center; font-family: var(--mono);
+    font-size: 12px; padding: 5px 0; }
+  .kv + .kv { border-top: 1px dashed var(--line); }
+  .kv .k { color: var(--muted); }
+  .kv .v { color: var(--ink); font-variant-numeric: tabular-nums; }
+  .kv .v.hl { color: var(--accent); }
+
+  .btn { appearance: none; border: 0; font-family: var(--sans); font-size: 14px; font-weight: 600;
+    border-radius: 12px; padding: 13px; width: 100%; cursor: pointer; background: var(--accent);
+    color: var(--on-accent); letter-spacing: -.01em; }
+  .btn.ghost { background: transparent; color: var(--ink); border: 1px solid var(--line-strong); }
+  .btn:focus-visible, .thumb:focus-visible, .icon-tab:focus-visible { outline: 2px solid var(--accent);
+    outline-offset: 2px; }
+  .hint { font-size: 12px; color: var(--muted); text-align: center; margin: 0; }
+  .hint code { font-family: var(--mono); color: var(--accent); }
+
+  /* checklist (screen 1) */
+  .steps { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 10px; }
+  .steps li { display: flex; gap: 10px; font-size: 13px; align-items: flex-start; }
+  .steps .n { font-family: var(--mono); font-size: 11px; color: var(--muted); border: 1px solid var(--line-strong);
+    border-radius: 6px; width: 20px; height: 20px; display: grid; place-items: center; flex: none; margin-top: 1px; }
+  .steps b { font-family: var(--mono); color: var(--accent); font-weight: 600; }
+
+  /* live view (screen 2) */
+  .live { position: relative; background: var(--live); border-radius: 14px; aspect-ratio: 3/2;
+    overflow: hidden; display: grid; place-items: center; }
+  .live::before, .live::after { content: ""; position: absolute; inset: 0; }
+  .live::before { background:
+    linear-gradient(var(--live-line) 1px, transparent 1px) 0 33.3%/100% 33.3%,
+    linear-gradient(90deg, var(--live-line) 1px, transparent 1px) 33.3% 0/33.3% 100%; }
+  .live .bracket { width: 52px; height: 52px; border: 1.5px solid rgba(255,255,255,.55); border-radius: 6px; z-index: 1; }
+  .live .tag { position: absolute; top: 8px; left: 8px; z-index: 2; }
+  .live .tag .chip { background: rgba(0,0,0,.4); border-color: rgba(255,255,255,.25); color: #fff; }
+  .live .placeholder { position: absolute; bottom: 8px; right: 10px; font-family: var(--mono);
+    font-size: 10px; color: rgba(255,255,255,.5); z-index: 2; letter-spacing: .04em; }
+
+  .expo { display: grid; grid-template-columns: repeat(4,1fr); gap: 0; background: var(--sub);
+    border: 1px solid var(--line); border-radius: 12px; overflow: hidden; }
+  .expo div { padding: 8px 6px; text-align: center; }
+  .expo div + div { border-left: 1px solid var(--line); }
+  .expo .lab { font-family: var(--mono); font-size: 9px; letter-spacing: .1em; color: var(--faint);
+    text-transform: uppercase; }
+  .expo .val { font-family: var(--mono); font-size: 14px; color: var(--ink); font-variant-numeric: tabular-nums; margin-top: 2px; }
+
+  .controls { display: flex; align-items: center; justify-content: space-between; padding: 4px 8px; }
+  .ctl { display: flex; flex-direction: column; align-items: center; gap: 5px; background: none; border: 0;
+    cursor: pointer; color: var(--muted); font-family: var(--mono); font-size: 10px; letter-spacing: .04em; }
+  .ctl .ring { width: 46px; height: 46px; border-radius: 50%; border: 1.5px solid var(--line-strong);
+    display: grid; place-items: center; color: var(--ink); }
+  .shutter { width: 68px; height: 68px; border-radius: 50%; border: 3px solid var(--accent);
+    background: var(--accent-soft); cursor: pointer; display: grid; place-items: center; transition: transform .08s ease; }
+  .shutter .inner { width: 48px; height: 48px; border-radius: 50%; background: var(--accent); }
+  .shutter:active { transform: scale(.92); }
+  .shutter.flash { animation: flash .3s ease; }
+  @keyframes flash { 0% { box-shadow: 0 0 0 0 var(--accent); } 100% { box-shadow: 0 0 0 16px transparent; } }
+
+  /* gallery (screen 3) */
+  .grid { display: grid; grid-template-columns: repeat(3,1fr); gap: 7px; overflow: hidden; }
+  .thumb { position: relative; aspect-ratio: 1; border-radius: 9px; border: 1px solid var(--line);
+    background:
+      repeating-linear-gradient(45deg, var(--sub) 0 8px, transparent 8px 16px), var(--panel);
+    cursor: pointer; padding: 0; overflow: hidden; }
+  .thumb .badge { position: absolute; top: 5px; left: 5px; font-family: var(--mono); font-size: 8px;
+    letter-spacing: .06em; padding: 1px 4px; border-radius: 4px; background: rgba(0,0,0,.55); color: #fff; }
+  .thumb .fn { position: absolute; bottom: 4px; left: 5px; right: 5px; font-family: var(--mono); font-size: 8px;
+    color: var(--muted); text-align: left; }
+  .thumb .tick { position: absolute; top: 4px; right: 4px; width: 17px; height: 17px; border-radius: 50%;
+    background: var(--accent); color: var(--on-accent); display: none; place-items: center; }
+  .thumb[aria-pressed="true"] { border-color: var(--accent); box-shadow: inset 0 0 0 2px var(--accent); }
+  .thumb[aria-pressed="true"] .tick { display: grid; }
+  .thumb.dl::after { content: "↓ 42%"; position: absolute; inset: 0; background: rgba(0,0,0,.5); color: #fff;
+    display: grid; place-items: center; font-family: var(--mono); font-size: 12px; }
+
+  .actionbar { border-top: 1px solid var(--line); margin: 0 -16px -14px; padding: 12px 16px;
+    display: flex; align-items: center; gap: 10px; background: var(--sub); }
+  .actionbar .meta { font-family: var(--mono); font-size: 11px; color: var(--muted); flex: 1;
+    font-variant-numeric: tabular-nums; }
+  .actionbar .meta b { color: var(--ink); }
+  .actionbar .btn { width: auto; padding: 10px 16px; font-size: 13px; }
+  .actionbar .btn:disabled { opacity: .45; cursor: default; }
+
+  /* bottom nav */
+  .bottomnav { display: flex; border-top: 1px solid var(--line); background: var(--panel); }
+  .icon-tab { flex: 1; background: none; border: 0; cursor: pointer; padding: 8px 0 12px;
+    display: flex; flex-direction: column; align-items: center; gap: 4px; color: var(--faint);
+    font-size: 10px; font-family: var(--sans); }
+  .icon-tab.active { color: var(--accent); }
+  .icon-tab.disabled { opacity: .5; }
+
+  /* annotation notes */
+  .note { margin: 14px 4px 0; font-size: 12px; color: var(--muted); line-height: 1.55;
+    border-left: 2px solid var(--accent); padding-left: 12px; }
+  .note b { color: var(--ink); font-weight: 600; }
+  .note code { font-family: var(--mono); color: var(--accent); font-size: 11px; }
+
+  .footer { margin-top: 34px; color: var(--muted); font-size: 12px; display: flex; flex-wrap: wrap;
+    gap: 6px 16px; align-items: center; }
+  .footer .chip { cursor: default; }
+
+  @media (prefers-reduced-motion: reduce) { * { animation: none !important; transition: none !important; } }
+  @media (max-width: 660px) { .wrap { padding: 28px 14px 48px; } .board { padding: 24px 12px; } }
+</style>
+
+<div class="wrap">
+  <header class="masthead">
+    <div>
+      <p class="eyebrow">Wireframe · v1 · low-fidelity</p>
+      <div class="brand">
+        <div class="logo" aria-hidden="true">
+          <svg width="19" height="19" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+            <path d="M3 8.5A2 2 0 0 1 5 6.5h2l1.2-1.8h7.6L18 6.5h1a2 2 0 0 1 2 2v9a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"/>
+            <circle cx="12" cy="12.5" r="3.4"/>
+          </svg>
+        </div>
+        <h1>LumiLink</h1>
+      </div>
+      <p class="lede">Reliable remote control &amp; photo transfer for the Lumix GX80 over its Wi-Fi hotspot — three core screens.</p>
+    </div>
+    <div class="flowkey">
+      <b>1</b>&nbsp;Connect &nbsp;→&nbsp; <b>2</b>&nbsp;Control &nbsp;→&nbsp; <b>3</b>&nbsp;Transfer
+    </div>
+  </header>
+
+  <div class="board">
+
+    <!-- ============ SCREEN 1 — CONNECT ============ -->
+    <div class="col">
+      <div class="steplabel"><span class="stepno">1</span><span class="steptitle">Connect &amp; pair</span></div>
+      <div class="phone">
+        <div class="statusbar"><span>10:24</span><span class="sig">GX80-3F1A · 100%</span></div>
+        <div class="appbar"><h2>LumiLink</h2><span class="sub">not connected</span></div>
+        <div class="content">
+          <span class="chip" id="s1chip"><span class="dot"></span>Searching for camera…</span>
+          <ul class="steps">
+            <li><span class="n">1</span><span>On the camera: <b>Wi-Fi → Remote Shooting</b></span></li>
+            <li><span class="n">2</span><span>Join hotspot <b>GX80-3F1A</b></span></li>
+            <li><span class="n">3</span><span>LumiLink pins to it &amp; pairs</span></li>
+          </ul>
+          <div class="card">
+            <div class="kv"><span class="k">ssid</span><span class="v">GX80-3F1A</span></div>
+            <div class="kv"><span class="k">camera ip</span><span class="v hl">192.168.54.1</span></div>
+            <div class="kv"><span class="k">internet</span><span class="v">none — ok</span></div>
+            <div class="kv"><span class="k">keep-alive</span><span class="v hl" id="s1keep">standby</span></div>
+          </div>
+          <button class="btn" id="connectBtn">Connect to camera</button>
+          <p class="hint">Binds every socket to the camera Wi-Fi so Android can’t reroute over mobile data.</p>
+        </div>
+        <nav class="bottomnav">
+          <button class="icon-tab active">
+            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M5 12.5a10 10 0 0 1 14 0M8 15.5a6 6 0 0 1 8 0"/><circle cx="12" cy="19" r="1"/></svg>
+            Connect</button>
+          <button class="icon-tab disabled">
+            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="8"/><circle cx="12" cy="12" r="3"/></svg>
+            Control</button>
+          <button class="icon-tab disabled">
+            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="4" y="4" width="7" height="7" rx="1"/><rect x="13" y="4" width="7" height="7" rx="1"/><rect x="4" y="13" width="7" height="7" rx="1"/><rect x="13" y="13" width="7" height="7" rx="1"/></svg>
+            Photos</button>
+        </nav>
+      </div>
+      <p class="note"><b>The whole point of the app.</b> Uses a <code>WifiNetworkSpecifier</code> with the internet capability removed, then <code>bindProcessToNetwork()</code> — and holds the request open so Android won’t drop the link.</p>
+    </div>
+
+    <!-- ============ SCREEN 2 — CONTROL ============ -->
+    <div class="col">
+      <div class="steplabel"><span class="stepno">2</span><span class="steptitle">Remote control &amp; live view</span></div>
+      <div class="phone">
+        <div class="statusbar"><span>10:26</span><span class="sig">GX80-3F1A · bound</span></div>
+        <div class="appbar"><h2>Control</h2><span class="chip ok"><span class="dot"></span>connected</span></div>
+        <div class="content">
+          <div class="live">
+            <div class="tag"><span class="chip"><span class="dot" style="background:var(--crit)"></span>LIVE</span></div>
+            <div class="bracket"></div>
+            <div class="placeholder">live view · MJPEG :49152</div>
+          </div>
+          <div class="expo">
+            <div><div class="lab">ISO</div><div class="val">200</div></div>
+            <div><div class="lab">Aperture</div><div class="val">f/4.0</div></div>
+            <div><div class="lab">Shutter</div><div class="val">1/250</div></div>
+            <div><div class="lab">EV</div><div class="val">−0.3</div></div>
+          </div>
+          <div class="controls">
+            <button class="ctl"><span class="ring"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="6"/><path d="M12 2v3M12 19v3M2 12h3M19 12h3"/></svg></span>AF</button>
+            <button class="shutter" id="shutterBtn" aria-label="Capture"><span class="inner"></span></button>
+            <button class="ctl"><span class="ring" style="color:var(--crit)"><svg width="18" height="18" viewBox="0 0 24 24" fill="currentColor"><circle cx="12" cy="12" r="7"/></svg></span>REC</button>
+          </div>
+          <p class="hint" id="s2hint"><code>GET /cam.cgi?mode=camcmd&amp;value=capture</code></p>
+        </div>
+        <nav class="bottomnav">
+          <button class="icon-tab"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M5 12.5a10 10 0 0 1 14 0M8 15.5a6 6 0 0 1 8 0"/><circle cx="12" cy="19" r="1"/></svg>Connect</button>
+          <button class="icon-tab active"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="8"/><circle cx="12" cy="12" r="3"/></svg>Control</button>
+          <button class="icon-tab"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="4" y="4" width="7" height="7" rx="1"/><rect x="13" y="4" width="7" height="7" rx="1"/><rect x="4" y="13" width="7" height="7" rx="1"/><rect x="13" y="13" width="7" height="7" rx="1"/></svg>Photos</button>
+        </nav>
+      </div>
+      <p class="note"><b>Live view + capture.</b> Camera streams MJPEG to a UDP port; shutter, AF and record are single HTTP GETs to <code>cam.cgi</code>. Exposure read-out comes from <code>mode=getstate</code>. Tap the shutter →</p>
+    </div>
+
+    <!-- ============ SCREEN 3 — TRANSFER ============ -->
+    <div class="col">
+      <div class="steplabel"><span class="stepno">3</span><span class="steptitle">Browse &amp; transfer</span></div>
+      <div class="phone">
+        <div class="statusbar"><span>10:31</span><span class="sig">GX80-3F1A · bound</span></div>
+        <div class="appbar"><h2>Photos on camera</h2><span class="sub">128 items</span></div>
+        <div class="content">
+          <div class="grid" id="grid">
+            <button class="thumb dl" aria-pressed="false"><span class="badge">RAW</span><span class="fn">P1030412</span></button>
+            <button class="thumb" data-mb="8" aria-pressed="true"><span class="badge">JPG</span><span class="tick"><svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3"><path d="M20 6 9 17l-5-5"/></svg></span><span class="fn">P1030413</span></button>
+            <button class="thumb" data-mb="24" aria-pressed="true"><span class="badge">RAW</span><span class="tick"><svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3"><path d="M20 6 9 17l-5-5"/></svg></span><span class="fn">P1030414</span></button>
+            <button class="thumb" data-mb="8" aria-pressed="false"><span class="badge">JPG</span><span class="tick"><svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3"><path d="M20 6 9 17l-5-5"/></svg></span><span class="fn">P1030415</span></button>
+            <button class="thumb" data-mb="8" aria-pressed="true"><span class="badge">JPG</span><span class="tick"><svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3"><path d="M20 6 9 17l-5-5"/></svg></span><span class="fn">P1030416</span></button>
+            <button class="thumb" data-mb="24" aria-pressed="false"><span class="badge">RAW</span><span class="tick"><svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3"><path d="M20 6 9 17l-5-5"/></svg></span><span class="fn">P1030417</span></button>
+            <button class="thumb" data-mb="8" aria-pressed="false"><span class="badge">JPG</span><span class="tick"><svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3"><path d="M20 6 9 17l-5-5"/></svg></span><span class="fn">P1030418</span></button>
+            <button class="thumb" data-mb="8" aria-pressed="false"><span class="badge">JPG</span><span class="tick"><svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3"><path d="M20 6 9 17l-5-5"/></svg></span><span class="fn">P1030419</span></button>
+            <button class="thumb" data-mb="24" aria-pressed="false"><span class="badge">RAW</span><span class="tick"><svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3"><path d="M20 6 9 17l-5-5"/></svg></span><span class="fn">P1030420</span></button>
+          </div>
+          <div class="actionbar">
+            <span class="meta"><b id="selCount">3</b> selected · <b id="selSize">40</b> MB</span>
+            <button class="btn" id="dlBtn">Download</button>
+          </div>
+        </div>
+        <nav class="bottomnav">
+          <button class="icon-tab"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M5 12.5a10 10 0 0 1 14 0M8 15.5a6 6 0 0 1 8 0"/><circle cx="12" cy="19" r="1"/></svg>Connect</button>
+          <button class="icon-tab"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="8"/><circle cx="12" cy="12" r="3"/></svg>Control</button>
+          <button class="icon-tab active"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="4" y="4" width="7" height="7" rx="1"/><rect x="13" y="4" width="7" height="7" rx="1"/><rect x="4" y="13" width="7" height="7" rx="1"/><rect x="13" y="13" width="7" height="7" rx="1"/></svg>Photos</button>
+        </nav>
+      </div>
+      <p class="note"><b>Transfer.</b> Camera switches to playback mode; files are browsed over UPnP/DLNA and pulled by plain HTTP GET. Tiles show type &amp; filename — tap to select, top-left one is mid-download. Try selecting tiles →</p>
+    </div>
+
+  </div>
+
+  <div class="footer">
+    <span class="chip" style="cursor:default"><span class="dot" style="background:var(--accent)"></span>interactive: connect · shutter · photo select</span>
+    <span>Saved in-repo at <code style="font-family:var(--mono)">docs/wireframe-v1.html</code></span>
+  </div>
+</div>
+
+<script>
+  // Screen 1 — connect toggle
+  (function () {
+    var btn = document.getElementById('connectBtn'),
+        chip = document.getElementById('s1chip'),
+        keep = document.getElementById('s1keep'),
+        on = false;
+    btn.addEventListener('click', function () {
+      on = !on;
+      chip.className = 'chip' + (on ? ' ok' : '');
+      chip.innerHTML = '<span class="dot"></span>' + (on ? 'Connected · socket bound to Wi-Fi' : 'Searching for camera…');
+      keep.textContent = on ? 'holding ✓' : 'standby';
+      btn.textContent = on ? 'Disconnect' : 'Connect to camera';
+      btn.className = 'btn' + (on ? ' ghost' : '');
+    });
+  })();
+
+  // Screen 2 — shutter
+  (function () {
+    var s = document.getElementById('shutterBtn'), h = document.getElementById('s2hint');
+    s.addEventListener('click', function () {
+      s.classList.remove('flash'); void s.offsetWidth; s.classList.add('flash');
+      h.innerHTML = '<code>200 OK · &lt;result&gt;ok&lt;/result&gt;</code> — captured';
+      setTimeout(function () { h.innerHTML = '<code>GET /cam.cgi?mode=camcmd&amp;value=capture</code>'; }, 1400);
+    });
+  })();
+
+  // Screen 3 — selection
+  (function () {
+    var grid = document.getElementById('grid'),
+        cnt = document.getElementById('selCount'),
+        sz = document.getElementById('selSize'),
+        dl = document.getElementById('dlBtn');
+    function recalc() {
+      var sel = grid.querySelectorAll('.thumb[aria-pressed="true"]'), mb = 0;
+      sel.forEach(function (t) { mb += parseInt(t.getAttribute('data-mb') || '0', 10); });
+      cnt.textContent = sel.length; sz.textContent = mb;
+      dl.disabled = sel.length === 0;
+      dl.textContent = sel.length ? 'Download' : 'Download';
+    }
+    grid.addEventListener('click', function (e) {
+      var t = e.target.closest('.thumb'); if (!t || t.classList.contains('dl')) return;
+      t.setAttribute('aria-pressed', t.getAttribute('aria-pressed') === 'true' ? 'false' : 'true');
+      recalc();
+    });
+    recalc();
+  })();
+</script>
