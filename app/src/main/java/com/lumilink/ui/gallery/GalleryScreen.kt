@@ -1,8 +1,11 @@
 package com.lumilink.ui.gallery
 
+import androidx.activity.compose.BackHandler
+import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.combinedClickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -13,6 +16,7 @@ import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.navigationBarsPadding
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.safeDrawingPadding
 import androidx.compose.foundation.lazy.grid.GridCells
 import androidx.compose.foundation.lazy.grid.LazyGridState
 import androidx.compose.foundation.lazy.grid.LazyVerticalGrid
@@ -23,6 +27,8 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.filled.Check
+import androidx.compose.material.icons.filled.Close
+import androidx.compose.material.icons.filled.Done
 import androidx.compose.material.icons.filled.Refresh
 import androidx.compose.material3.Button
 import androidx.compose.material3.CircularProgressIndicator
@@ -54,6 +60,7 @@ import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.lifecycle.viewmodel.compose.viewModel
@@ -62,13 +69,16 @@ import coil.imageLoader
 import coil.request.ImageRequest
 import com.lumilink.model.CameraPhoto
 import com.lumilink.ui.appContainer
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.debounce
 import kotlinx.coroutines.flow.distinctUntilChanged
 
 /**
- * Gallery screen — the camera's photos in a lazy, selectable grid with a sort control and a
- * download action bar. Thumbnails prefetch a little ahead of the viewport (once scrolling settles)
- * so they're cached before the user reaches them.
+ * Gallery screen — the camera's photos in a lazy, selectable grid.
+ *
+ * Interaction (the standard gallery pattern): tap a photo to preview it full-screen; long-press to
+ * start multi-selecting (then tap toggles selection). A background warmer pre-caches every
+ * thumbnail so scrolling becomes instant.
  */
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -87,14 +97,13 @@ fun GalleryScreen(onBack: () -> Unit) {
     }
 
     val gridState = rememberLazyGridState()
-    // Jump back to the top when the sort order changes.
     LaunchedEffect(state.sortOrder) { gridState.scrollToItem(0) }
 
-    // Prefetch thumbnails a few rows ahead of the viewport, but only once scrolling settles — the
-    // camera's tiny server can't take a flood of requests for rows the user is flinging past.
     val context = LocalContext.current
     val imageLoader = context.imageLoader
     val currentPhotos = rememberUpdatedState(state.orderedPhotos)
+
+    // Prefetch a few rows ahead once scrolling settles (keeps just-below content ready).
     LaunchedEffect(gridState) {
         snapshotFlow { gridState.layoutInfo.visibleItemsInfo.lastOrNull()?.index ?: 0 }
             .distinctUntilChanged()
@@ -109,21 +118,57 @@ fun GalleryScreen(onBack: () -> Unit) {
             }
     }
 
+    // Background warmer: gently pre-cache the whole thumbnail set (small batches, paced) so the
+    // entire gallery becomes instant to scroll — without flooding the camera's fragile server.
+    LaunchedEffect(state.allPhotos) {
+        val urls = state.allPhotos.mapNotNull { it.thumbnailUrl }
+        if (urls.isEmpty()) return@LaunchedEffect
+        delay(WARM_START_DELAY_MS) // let the first visible screen load first
+        var i = 0
+        while (i < urls.size) {
+            val end = minOf(i + WARM_BATCH, urls.size)
+            for (j in i until end) {
+                imageLoader.enqueue(ImageRequest.Builder(context).data(urls[j]).build())
+            }
+            i = end
+            delay(WARM_BATCH_DELAY_MS)
+        }
+    }
+
+    var previewPhoto by remember { mutableStateOf<CameraPhoto?>(null) }
+    val selectionMode = state.selectedIds.isNotEmpty()
+
     Scaffold(
         topBar = {
-            TopAppBar(
-                title = { Text("Photos on camera") },
-                navigationIcon = {
-                    IconButton(onClick = onBack) {
-                        Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = "Back")
-                    }
-                },
-                actions = {
-                    IconButton(onClick = viewModel::load, enabled = !state.loading) {
-                        Icon(Icons.Default.Refresh, contentDescription = "Reload")
-                    }
-                },
-            )
+            if (selectionMode) {
+                TopAppBar(
+                    title = { Text("${state.selectedIds.size} selected") },
+                    navigationIcon = {
+                        IconButton(onClick = viewModel::clearSelection) {
+                            Icon(Icons.Default.Close, contentDescription = "Clear selection")
+                        }
+                    },
+                    actions = {
+                        IconButton(onClick = viewModel::selectAll) {
+                            Icon(Icons.Default.Done, contentDescription = "Select all")
+                        }
+                    },
+                )
+            } else {
+                TopAppBar(
+                    title = { Text("Photos on camera") },
+                    navigationIcon = {
+                        IconButton(onClick = onBack) {
+                            Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = "Back")
+                        }
+                    },
+                    actions = {
+                        IconButton(onClick = viewModel::load, enabled = !state.loading) {
+                            Icon(Icons.Default.Refresh, contentDescription = "Reload")
+                        }
+                    },
+                )
+            }
         },
         bottomBar = {
             if (state.selectedIds.isNotEmpty() || state.downloading) {
@@ -155,22 +200,29 @@ fun GalleryScreen(onBack: () -> Unit) {
                         gridState = gridState,
                         photos = state.orderedPhotos,
                         selectedIds = state.selectedIds,
-                        onToggle = viewModel::toggleSelection,
+                        onClick = { photo ->
+                            if (selectionMode) viewModel.toggleSelection(photo.id) else previewPhoto = photo
+                        },
+                        onLongClick = { photo -> viewModel.toggleSelection(photo.id) },
                     )
                 }
             }
         }
     }
+
+    previewPhoto?.let { photo ->
+        PhotoPreview(
+            photo = photo,
+            downloading = state.downloading,
+            onDownload = { viewModel.downloadSingle(photo) },
+            onClose = { previewPhoto = null },
+        )
+    }
 }
 
 @Composable
-private fun GalleryControls(
-    sortOrder: SortOrder,
-    totalCount: Int,
-    onSort: (SortOrder) -> Unit,
-) {
+private fun GalleryControls(sortOrder: SortOrder, totalCount: Int, onSort: (SortOrder) -> Unit) {
     var sortMenuOpen by remember { mutableStateOf(false) }
-
     Row(
         modifier = Modifier.fillMaxWidth().padding(horizontal = 12.dp, vertical = 4.dp),
         verticalAlignment = Alignment.CenterVertically,
@@ -190,13 +242,12 @@ private fun GalleryControls(
                 )
             }
         }
-
         Text(
             text = "$totalCount photos",
             style = MaterialTheme.typography.bodySmall,
             color = MaterialTheme.colorScheme.onSurfaceVariant,
             modifier = Modifier.weight(1f),
-            textAlign = androidx.compose.ui.text.style.TextAlign.End,
+            textAlign = TextAlign.End,
         )
     }
 }
@@ -206,7 +257,8 @@ private fun PhotoGrid(
     gridState: LazyGridState,
     photos: List<CameraPhoto>,
     selectedIds: Set<String>,
-    onToggle: (String) -> Unit,
+    onClick: (CameraPhoto) -> Unit,
+    onLongClick: (CameraPhoto) -> Unit,
 ) {
     LazyVerticalGrid(
         state = gridState,
@@ -220,20 +272,27 @@ private fun PhotoGrid(
             PhotoCell(
                 photo = photo,
                 selected = photo.id in selectedIds,
-                onClick = { onToggle(photo.id) },
+                onClick = { onClick(photo) },
+                onLongClick = { onLongClick(photo) },
             )
         }
     }
 }
 
+@OptIn(ExperimentalFoundationApi::class)
 @Composable
-private fun PhotoCell(photo: CameraPhoto, selected: Boolean, onClick: () -> Unit) {
+private fun PhotoCell(
+    photo: CameraPhoto,
+    selected: Boolean,
+    onClick: () -> Unit,
+    onLongClick: () -> Unit,
+) {
     Box(
         modifier = Modifier
             .aspectRatio(1f)
             .clip(RoundedCornerShape(8.dp))
             .background(MaterialTheme.colorScheme.surfaceVariant)
-            .clickable(onClick = onClick),
+            .combinedClickable(onClick = onClick, onLongClick = onLongClick),
     ) {
         AsyncImage(
             model = photo.thumbnailUrl,
@@ -277,6 +336,49 @@ private fun PhotoCell(photo: CameraPhoto, selected: Boolean, onClick: () -> Unit
     }
 }
 
+/** Full-screen preview of a single photo. */
+@Composable
+private fun PhotoPreview(
+    photo: CameraPhoto,
+    downloading: Boolean,
+    onDownload: () -> Unit,
+    onClose: () -> Unit,
+) {
+    BackHandler(onBack = onClose)
+    // RAW files can't be shown as an image, so preview the thumbnail for those.
+    val previewUrl = if (photo.isRaw) photo.thumbnailUrl else photo.originalUrl
+
+    Surface(color = Color.Black, modifier = Modifier.fillMaxSize()) {
+        Box(modifier = Modifier.fillMaxSize().safeDrawingPadding()) {
+            CircularProgressIndicator(
+                modifier = Modifier.align(Alignment.Center),
+                color = Color.White,
+            )
+            AsyncImage(
+                model = previewUrl,
+                contentDescription = photo.title,
+                contentScale = ContentScale.Fit,
+                modifier = Modifier.fillMaxSize(),
+            )
+
+            IconButton(
+                onClick = onClose,
+                modifier = Modifier.align(Alignment.TopStart).padding(8.dp),
+            ) {
+                Icon(Icons.Default.Close, contentDescription = "Close", tint = Color.White)
+            }
+
+            Button(
+                onClick = onDownload,
+                enabled = !downloading,
+                modifier = Modifier.align(Alignment.BottomCenter).padding(24.dp),
+            ) {
+                Text(if (downloading) "Downloading…" else "Download ${if (photo.isRaw) "RAW" else "JPG"}")
+            }
+        }
+    }
+}
+
 @Composable
 private fun DownloadBar(
     selectedCount: Int,
@@ -288,10 +390,7 @@ private fun DownloadBar(
     Surface(tonalElevation = 3.dp) {
         Column(modifier = Modifier.navigationBarsPadding()) {
             if (downloading) {
-                LinearProgressIndicator(
-                    progress = { progress },
-                    modifier = Modifier.fillMaxWidth(),
-                )
+                LinearProgressIndicator(progress = { progress }, modifier = Modifier.fillMaxWidth())
             }
             Row(
                 modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 12.dp),
@@ -318,5 +417,8 @@ private fun LoadError(message: String, onRetry: () -> Unit) {
     }
 }
 
-private const val PREFETCH_AHEAD = 6 // thumbnails to warm ahead once scrolling settles
-private const val PREFETCH_DEBOUNCE_MS = 200L // wait for scrolling to settle before prefetching
+private const val PREFETCH_AHEAD = 6
+private const val PREFETCH_DEBOUNCE_MS = 200L
+private const val WARM_START_DELAY_MS = 1_500L
+private const val WARM_BATCH = 6
+private const val WARM_BATCH_DELAY_MS = 250L

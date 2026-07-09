@@ -113,9 +113,37 @@ first on-device test before starting MVP2.
   currently save the JPEG.)
 - `ktlint` from the plan is not yet wired into Gradle.
 
-## 9. Next steps
-1. **On-device verify MVP1** (physical Xiaomi 14T Pro + GX80): connect holds, browse, download JPG + RAW.
-2. Then MVP2 (remote shutter), then MVP3 (live view).
+### Camera quirks learned on-device (GX80 — important for future work)
+- The camera's hotspot can be **open (no password)** if its Wi-Fi password setting is off.
+- **Pairing** (`accctrl&type=req_acc`) returns **CSV** (`ok,GX80-…` / `err_user_refused,…`), NOT XML,
+  and needs the user to **accept the device on the camera screen** the first time — so we poll ~12 s.
+- The camera **sleeps / drops remote mode** when idle; the app now waits/retries and shows a clear
+  "re-arm the camera" message.
+- **Thumbnail loading was the big saga.** Root causes, all fixed: (1) Android blocked cleartext HTTP;
+  (2) OkHttp **keep-alive hangs** with the camera's server → we force `Connection: close`, fresh
+  socket per request; (3) camera **chokes on many concurrent connections** → concurrency capped at 3,
+  debounced prefetch; (4) camera sends **no HTTP cache headers** so Coil re-downloaded everything →
+  `respectCacheHeaders(false)` + disk/memory cache. A single thumbnail is ~4.5 KB / ~50 ms; the whole
+  638-thumb set is ~3 MB, so a **background warmer** pre-caches them all in ~30 s (disk cache persists).
+
+## 9. Current status & where to pick up (paused 2026-07-09, evening)
+
+**MVP1 is complete, verified on the real GX80 + Xiaomi 14T Pro, and polished.** Working end-to-end:
+connect (holds), pair, browse all 638 photos, newest/oldest sort, fast cached thumbnails,
+tap-to-preview full image, long-press multi-select + select-all, single & bulk download.
+
+Committed: `5407b1d` (MVP1 working) + a follow-up commit for the polish (preview/select-all/warmer).
+Build/run loop unchanged: `JAVA_HOME=<temurin17> ./gradlew installDebug` then relaunch; the phone
+connects to the Mac by USB (adb occasionally drops — `adb kill-server && adb start-server` recovers it).
+
+### Next session — start here
+1. **Optional MVP1 refinement discussed but not built:** pause the background thumbnail warmer while
+   the user is actively scrolling (resume when idle) — only if scrolling ever feels like it competes.
+2. **MVP2 — remote shutter** (the next stage): add a Control screen + `ControlViewModel`; switch camera
+   to record mode (`camcmd&value=recmode`); capture (`camcmd&value=capture`), AF (`oneshot_af`);
+   poll `getstate` for ISO/aperture/shutter/EV read-out. Small compared to MVP1; no thumbnail-style
+   rabbit holes expected.
+3. Later: MVP3 (live view — UDP MJPEG), and the deferred items above (Wi-Fi scan, ktlint, RAW+JPEG).
 
 ## Sources
 - Lumix GX80 protocol: https://github.com/cleverfox/lumixproto

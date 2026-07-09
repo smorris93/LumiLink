@@ -77,9 +77,22 @@ class GalleryViewModel(
         }
     }
 
-    fun downloadSelected() {
-        val selected = _uiState.value.selectedPhotos
-        if (selected.isEmpty() || _uiState.value.downloading) return
+    fun selectAll() {
+        _uiState.update { it.copy(selectedIds = it.allPhotos.map { photo -> photo.id }.toSet()) }
+    }
+
+    fun clearSelection() {
+        _uiState.update { it.copy(selectedIds = emptySet()) }
+    }
+
+    /** Download the currently-selected photos, then clear the selection. */
+    fun downloadSelected() = downloadPhotos(_uiState.value.selectedPhotos, clearSelectionAfter = true)
+
+    /** Download a single photo (e.g. from the preview) without touching the selection. */
+    fun downloadSingle(photo: CameraPhoto) = downloadPhotos(listOf(photo), clearSelectionAfter = false)
+
+    private fun downloadPhotos(photos: List<CameraPhoto>, clearSelectionAfter: Boolean) {
+        if (photos.isEmpty() || _uiState.value.downloading) return
 
         viewModelScope.launch {
             _uiState.update {
@@ -87,9 +100,9 @@ class GalleryViewModel(
             }
             var completed = 0
             try {
-                for (photo in selected) {
+                for (photo in photos) {
                     photoDownloader.download(photo) { fileProgress ->
-                        val overall = (completed + fileProgress) / selected.size
+                        val overall = (completed + fileProgress) / photos.size
                         _uiState.update { it.copy(downloadProgress = overall) }
                     }
                     completed++
@@ -98,7 +111,7 @@ class GalleryViewModel(
                     it.copy(
                         downloading = false,
                         downloadProgress = 1f,
-                        selectedIds = emptySet(),
+                        selectedIds = if (clearSelectionAfter) emptySet() else it.selectedIds,
                         statusMessage = "Saved $completed photo(s) to your device",
                     )
                 }
@@ -106,7 +119,7 @@ class GalleryViewModel(
                 _uiState.update {
                     it.copy(
                         downloading = false,
-                        statusMessage = "Download failed after $completed of ${selected.size}: ${e.message}",
+                        statusMessage = "Download failed after $completed of ${photos.size}: ${e.message}",
                     )
                 }
             }
