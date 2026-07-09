@@ -1,18 +1,28 @@
 package com.lumilink.network
 
 /**
- * Parses the tiny XML replies the camera returns to cam.cgi commands, e.g.
- * `<camrply><result>ok</result></camrply>`.
+ * Parses the two reply formats the camera uses for cam.cgi:
+ *  - XML control replies: `<camrply><result>ok</result></camrply>`
+ *  - CSV access-control replies: `ok,GX80-218C63,remote,open` or `err_user_refused,GX80-...,...`
  *
- * Kotlin note: `object` is a singleton — a class with exactly one instance, accessed by name
- * (`CamReplyParser.resultOf(...)`), like a holder of stateless helper functions. It's a pure
- * function with no Android dependencies, so it's unit-testable on the plain JVM.
+ * Returns the status token ("ok", "err_user_refused", …), or "unknown" if neither form matches.
+ * Pure and Android-free, so it's unit-testable on the JVM.
  */
 object CamReplyParser {
 
     private val resultRegex = Regex("<result>(.*?)</result>", RegexOption.IGNORE_CASE)
 
-    /** Returns the `<result>` text (e.g. "ok"), or "unknown" if the tag is absent. */
-    fun resultOf(xml: String): String =
-        resultRegex.find(xml)?.groupValues?.get(1)?.trim() ?: "unknown"
+    fun resultOf(reply: String): String {
+        val trimmed = reply.trim()
+
+        // XML form first.
+        resultRegex.find(trimmed)?.groupValues?.get(1)?.trim()?.let { return it }
+
+        // XML without a <result> element — malformed for our purposes.
+        if (trimmed.startsWith("<")) return "unknown"
+
+        // CSV form: the status is the first comma/newline-delimited field.
+        val firstField = trimmed.substringBefore(',').substringBefore('\n').trim()
+        return firstField.ifEmpty { "unknown" }
+    }
 }

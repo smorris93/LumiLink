@@ -46,15 +46,22 @@ class CameraNetworkManager(context: Context) {
      * connects silently thereafter.
      */
     fun connect(credentials: CameraCredentials) {
-        if (networkCallback != null) return // already connecting or connected
+        // Tear down any previous request first so a retry after a dropped connection always works
+        // (a stale callback used to block reconnection).
+        networkCallback?.let { runCatching { connectivityManager.unregisterNetworkCallback(it) } }
+        networkCallback = null
         _state.value = ConnectionState.Connecting
         // Give the process foreground priority so it isn't killed during long transfers.
         CameraConnectionService.start(appContext)
 
-        val specifier = WifiNetworkSpecifier.Builder()
+        val specifierBuilder = WifiNetworkSpecifier.Builder()
             .setSsid(credentials.ssid)
-            .setWpa2Passphrase(credentials.passphrase)
-            .build()
+        // The GX80 hotspot may be open (no password) if its Wi-Fi password setting is off.
+        // Only set a WPA2 passphrase when the user actually provided one.
+        if (credentials.passphrase.isNotBlank()) {
+            specifierBuilder.setWpa2Passphrase(credentials.passphrase)
+        }
+        val specifier = specifierBuilder.build()
 
         val request = NetworkRequest.Builder()
             .addTransportType(NetworkCapabilities.TRANSPORT_WIFI)

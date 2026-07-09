@@ -1,8 +1,10 @@
 package com.lumilink.data
 
+import android.util.Log
 import com.lumilink.model.CameraPhoto
 import com.lumilink.network.CameraException
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.withContext
 import okhttp3.OkHttpClient
 import okhttp3.Request
@@ -18,9 +20,28 @@ class PhotoDownloader(
 ) {
 
     /**
+     * Download a photo, retrying a few times — the camera's embedded server often drops the first
+     * connection (especially right after a mode switch), which is why a manual retry usually works.
+     *
      * @param onProgress fraction 0f..1f for this single file (best-effort; only when size known).
      */
     suspend fun download(photo: CameraPhoto, onProgress: (Float) -> Unit = {}) =
+        withContext(Dispatchers.IO) {
+            var attempt = 0
+            while (true) {
+                try {
+                    downloadOnce(photo, onProgress)
+                    return@withContext
+                } catch (e: Exception) {
+                    attempt++
+                    if (attempt >= MAX_ATTEMPTS) throw e
+                    Log.w(TAG, "Download attempt $attempt for ${photo.title} failed: ${e.message}; retrying")
+                    delay(RETRY_DELAY_MS)
+                }
+            }
+        }
+
+    private suspend fun downloadOnce(photo: CameraPhoto, onProgress: (Float) -> Unit) =
         withContext(Dispatchers.IO) {
             val request = Request.Builder().url(photo.originalUrl).build()
             httpClient.newCall(request).execute().use { response ->
@@ -58,7 +79,10 @@ class PhotoDownloader(
     }
 
     private companion object {
+        const val TAG = "PhotoDownloader"
         const val BUFFER_SIZE = 64 * 1024
+        const val MAX_ATTEMPTS = 3
+        const val RETRY_DELAY_MS = 1_000L
 
         fun defaultHttpClient(): OkHttpClient = OkHttpClient.Builder()
             .connectTimeout(5, TimeUnit.SECONDS)

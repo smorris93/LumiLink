@@ -15,26 +15,34 @@ import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
 
+/** Order photos are shown in. The camera lists oldest-first, so NEWEST just reverses that. */
+enum class SortOrder { NEWEST, OLDEST }
+
 /**
- * Drives the gallery: loads the camera's photos, tracks which are selected, and downloads them.
- * The whole screen renders from a single immutable [UiState] snapshot.
+ * Drives the gallery: loads the camera's photos, tracks selection, sorts, and downloads. The grid
+ * itself is lazy (only visible thumbnails load), so no manual paging is needed.
  */
 class GalleryViewModel(
     private val photoRepository: PhotoRepository,
     private val photoDownloader: PhotoDownloader,
 ) : ViewModel() {
 
-    /** Everything the gallery screen needs to render, in one immutable object. */
     data class UiState(
         val loading: Boolean = false,
-        val photos: List<CameraPhoto> = emptyList(),
+        /** All photos as fetched from the camera (oldest-first order). */
+        val allPhotos: List<CameraPhoto> = emptyList(),
+        val sortOrder: SortOrder = SortOrder.NEWEST,
         val selectedIds: Set<String> = emptySet(),
         val error: String? = null,
         val downloading: Boolean = false,
         val downloadProgress: Float = 0f,
         val statusMessage: String? = null,
     ) {
-        val selectedPhotos: List<CameraPhoto> get() = photos.filter { it.id in selectedIds }
+        /** All photos in the chosen order (newest = reversed fetch order). */
+        val orderedPhotos: List<CameraPhoto>
+            get() = if (sortOrder == SortOrder.OLDEST) allPhotos else allPhotos.asReversed()
+
+        val selectedPhotos: List<CameraPhoto> get() = allPhotos.filter { it.id in selectedIds }
         val selectedBytes: Long get() = selectedPhotos.sumOf { it.sizeBytes ?: 0L }
     }
 
@@ -45,30 +53,30 @@ class GalleryViewModel(
         load()
     }
 
-    /** (Re)load the photo list from the camera. */
     fun load() {
         _uiState.update { it.copy(loading = true, error = null) }
         viewModelScope.launch {
             try {
                 val photos = photoRepository.listPhotos()
-                _uiState.update { it.copy(loading = false, photos = photos) }
+                _uiState.update { it.copy(loading = false, allPhotos = photos) }
             } catch (e: Exception) {
-                _uiState.update {
-                    it.copy(loading = false, error = e.message ?: "Couldn't load photos")
-                }
+                _uiState.update { it.copy(loading = false, error = e.message ?: "Couldn't load photos") }
             }
         }
+    }
+
+    fun setSortOrder(order: SortOrder) {
+        _uiState.update { it.copy(sortOrder = order) }
     }
 
     fun toggleSelection(id: String) {
         _uiState.update { state ->
             val updated = state.selectedIds.toMutableSet()
-            if (!updated.add(id)) updated.remove(id) // add returns false if already present
+            if (!updated.add(id)) updated.remove(id)
             state.copy(selectedIds = updated)
         }
     }
 
-    /** Download all selected photos, one after another, updating overall progress. */
     fun downloadSelected() {
         val selected = _uiState.value.selectedPhotos
         if (selected.isEmpty() || _uiState.value.downloading) return
@@ -81,7 +89,6 @@ class GalleryViewModel(
             try {
                 for (photo in selected) {
                     photoDownloader.download(photo) { fileProgress ->
-                        // Overall progress = finished files + current file's fraction, averaged.
                         val overall = (completed + fileProgress) / selected.size
                         _uiState.update { it.copy(downloadProgress = overall) }
                     }
@@ -96,7 +103,6 @@ class GalleryViewModel(
                     )
                 }
             } catch (e: Exception) {
-                // Surface download problems as a transient message; keep the grid visible.
                 _uiState.update {
                     it.copy(
                         downloading = false,

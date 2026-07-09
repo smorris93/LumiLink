@@ -22,4 +22,17 @@ class CamReplyParserTest {
     fun `returns unknown when result tag missing`() {
         assertEquals("unknown", CamReplyParser.resultOf("<camrply></camrply>"))
     }
+
+    @Test
+    fun `reads ok from csv access-control reply`() {
+        assertEquals("ok", CamReplyParser.resultOf("ok,GX80-218C63,remote,open"))
+    }
+
+    @Test
+    fun `reads error token from csv access-control reply`() {
+        assertEquals(
+            "err_user_refused",
+            CamReplyParser.resultOf("err_user_refused,GX80-218C63,remote,open"),
+        )
+    }
 }

@@ -49,23 +49,33 @@ class PhotoRepository(
         while (queue.isNotEmpty() && photos.size < MAX_PHOTOS && browses < MAX_BROWSES) {
             val objectId = queue.removeFirst()
             if (!visited.add(objectId)) continue // guard against cycles
-            browses++
-            try {
-                val listing = DidlParser.parse(browse(controlUrl, objectId))
+
+            // Page through this container: the camera returns ~50 children per Browse, so keep
+            // advancing StartingIndex until we've seen TotalMatches (or a page comes back empty).
+            var startIndex = 0
+            while (browses < MAX_BROWSES && photos.size < MAX_PHOTOS) {
+                val listing = try {
+                    DidlParser.parse(browse(controlUrl, objectId, startIndex, PAGE_SIZE))
+                } catch (e: Exception) {
+                    Log.w(TAG, "Skipping container $objectId at index $startIndex: ${e.message}")
+                    break
+                }
+                browses++
                 photos += listing.photos
-                queue.addAll(listing.containerIds)
-            } catch (e: Exception) {
-                // One bad container shouldn't abort the whole listing — log and keep going.
-                Log.w(TAG, "Skipping container $objectId: ${e.message}")
+                listing.containerIds.forEach { if (it !in visited) queue.add(it) }
+
+                if (listing.numberReturned <= 0) break
+                startIndex += listing.numberReturned
+                if (listing.totalMatches in 1..startIndex) break // fetched everything
             }
         }
         Log.i(TAG, "Listed ${photos.size} photos in $browses browse calls")
         photos.take(MAX_PHOTOS)
     }
 
-    /** POST a UPnP ContentDirectory `Browse` for the direct children of [objectId]. */
-    private fun browse(controlUrl: String, objectId: String): String {
-        val body = browseSoapBody(objectId).toRequestBody(SOAP_MEDIA_TYPE)
+    /** POST a UPnP ContentDirectory `Browse` for a page of the direct children of [objectId]. */
+    private fun browse(controlUrl: String, objectId: String, startIndex: Int, count: Int): String {
+        val body = browseSoapBody(objectId, startIndex, count).toRequestBody(SOAP_MEDIA_TYPE)
         val request = Request.Builder()
             .url(controlUrl)
             .addHeader("SOAPAction", SOAP_ACTION)
@@ -89,7 +99,7 @@ class PhotoRepository(
         }
     }
 
-    private fun browseSoapBody(objectId: String): String =
+    private fun browseSoapBody(objectId: String, startIndex: Int, count: Int): String =
         """<?xml version="1.0" encoding="utf-8"?>
 <s:Envelope xmlns:s="http://schemas.xmlsoap.org/soap/envelope/" s:encodingStyle="http://schemas.xmlsoap.org/soap/encoding/">
  <s:Body>
@@ -97,8 +107,8 @@ class PhotoRepository(
    <ObjectID>$objectId</ObjectID>
    <BrowseFlag>BrowseDirectChildren</BrowseFlag>
    <Filter>*</Filter>
-   <StartingIndex>0</StartingIndex>
-   <RequestedCount>$REQUESTED_COUNT</RequestedCount>
+   <StartingIndex>$startIndex</StartingIndex>
+   <RequestedCount>$count</RequestedCount>
    <SortCriteria></SortCriteria>
   </u:Browse>
  </s:Body>
@@ -107,9 +117,9 @@ class PhotoRepository(
     private companion object {
         const val TAG = "PhotoRepository"
         const val ROOT_OBJECT_ID = "0"
-        const val MAX_PHOTOS = 500
-        const val MAX_BROWSES = 60
-        const val REQUESTED_COUNT = 500
+        const val MAX_PHOTOS = 2000
+        const val MAX_BROWSES = 300
+        const val PAGE_SIZE = 100 // camera may cap lower; we page by the actual NumberReturned
         const val SOAP_ACTION = "\"urn:schemas-upnp-org:service:ContentDirectory:1#Browse\""
         val SOAP_MEDIA_TYPE = "text/xml; charset=\"utf-8\"".toMediaType()
 

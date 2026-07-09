@@ -44,6 +44,13 @@ class DidlParserTest {
     }
 
     @Test
+    fun `reads paging counts`() {
+        val listing = DidlParser.parse(browseResponse)
+        assertEquals(3, listing.numberReturned)
+        assertEquals(3, listing.totalMatches)
+    }
+
+    @Test
     fun `parses a jpeg photo with thumbnail and original`() {
         val jpeg = DidlParser.parse(browseResponse).photos.first { it.id == "1030413" }
         assertEquals("P1030413", jpeg.title)

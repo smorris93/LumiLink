@@ -124,7 +124,7 @@ fun ConnectScreen(onConnected: () -> Unit) {
             OutlinedTextField(
                 value = password,
                 onValueChange = { password = it },
-                label = { Text("Wi-Fi password") },
+                label = { Text("Wi-Fi password (leave blank if none)") },
                 singleLine = true,
                 visualTransformation = PasswordVisualTransformation(),
                 keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Password),
@@ -132,8 +132,9 @@ fun ConnectScreen(onConnected: () -> Unit) {
             )
 
             Button(
+                // Password is optional — the camera hotspot may be an open network.
                 onClick = attemptConnect,
-                enabled = !connecting && ssid.isNotBlank() && password.isNotBlank(),
+                enabled = !connecting && ssid.isNotBlank(),
                 modifier = Modifier.fillMaxWidth(),
             ) {
                 Text(if (connecting) "Connecting…" else "Connect to camera")
@@ -142,8 +143,9 @@ fun ConnectScreen(onConnected: () -> Unit) {
             Spacer(Modifier.height(4.dp))
             Text(
                 text = "On the camera: Wi-Fi → New Connection → Remote Shooting & View, then enter " +
-                    "that hotspot's name and password here. The first connection shows a one-time " +
-                    "Android prompt; after that it connects automatically.",
+                    "that hotspot's name here. Leave the password blank if the camera doesn't show " +
+                    "one. The first connection shows a one-time Android prompt; after that it " +
+                    "connects automatically.",
                 style = MaterialTheme.typography.bodySmall,
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
             )

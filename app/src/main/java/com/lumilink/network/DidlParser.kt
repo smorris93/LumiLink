@@ -7,94 +7,119 @@ import org.xml.sax.InputSource
 import java.io.StringReader
 import javax.xml.parsers.DocumentBuilderFactory
 
-/** The children of one UPnP container: sub-container ids to recurse into, plus photo items. */
+/**
+ * The children of one UPnP container plus the paging counts from the Browse response.
+ *
+ * @param numberReturned how many direct children this Browse call returned (for paging).
+ * @param totalMatches total children the container has (for paging).
+ */
 data class DidlListing(
     val containerIds: List<String>,
     val photos: List<CameraPhoto>,
+    val numberReturned: Int,
+    val totalMatches: Int,
 )
 
 /**
- * Parses a UPnP ContentDirectory `Browse` response into containers + photos.
+ * Parses a UPnP ContentDirectory `Browse` response into containers + photos + paging counts.
  *
- * The SOAP response wraps the DIDL-Lite document inside a `<Result>` element as *escaped* text
- * (`&lt;DIDL-Lite&gt;...`). An XML parser un-escapes that automatically, so we read `<Result>`'s
- * text content and parse it as a second XML document.
+ * The SOAP response wraps the DIDL-Lite document inside a `<Result>` element as *escaped* text;
+ * an XML parser un-escapes it, so we read `<Result>`'s text and parse it as a second document.
+ * `NumberReturned`/`TotalMatches` sit alongside `<Result>` and drive paging.
  *
- * Uses only `javax.xml` (DOM), which exists on both Android and the plain JVM, so this stays
- * unit-testable without a device. Namespace-agnostic lookups (`getElementsByTagNameNS("*", ...)`)
- * avoid fighting the many DIDL namespaces (dc:, upnp:, …).
+ * Uses only `javax.xml` (DOM), so it stays unit-testable off-device.
  */
 object DidlParser {
 
     fun parse(browseResponseXml: String): DidlListing {
-        val didl = extractResultDidl(browseResponseXml) ?: return DidlListing(emptyList(), emptyList())
-        val doc = parseXml(didl)
+        val outer = parseXml(browseResponseXml)
+        val resultNodes = outer.getElementsByTagNameNS("*", "Result")
 
+        val didl: String?
+        val number: Int?
+        val total: Int?
+        if (resultNodes.length > 0) {
+            didl = resultNodes.item(0).textContent?.trim()
+            number = intField(outer, "NumberReturned")
+            total = intField(outer, "TotalMatches")
+        } else if (browseResponseXml.contains("DIDL-Lite", ignoreCase = true)) {
+            didl = browseResponseXml // caller/test handed us the DIDL document directly
+            number = null
+            total = null
+        } else {
+            didl = null
+            number = null
+            total = null
+        }
+
+        if (didl.isNullOrEmpty()) {
+            return DidlListing(emptyList(), emptyList(), number ?: 0, total ?: 0)
+        }
+
+        val doc = parseXml(didl)
         val containerIds = elementsByLocalName(doc, "container")
             .mapNotNull { it.getAttribute("id").ifBlank { null } }
         val photos = elementsByLocalName(doc, "item").mapNotNull { toPhoto(it) }
-        return DidlListing(containerIds, photos)
+
+        val effectiveNumber = number ?: (containerIds.size + photos.size)
+        val effectiveTotal = total ?: effectiveNumber
+        return DidlListing(containerIds, photos, effectiveNumber, effectiveTotal)
     }
 
-    /** Pulls the (un-escaped) DIDL-Lite string out of the SOAP `<Result>`, tolerating raw DIDL. */
-    private fun extractResultDidl(xml: String): String? {
-        val doc = parseXml(xml)
-        val results = doc.getElementsByTagNameNS("*", "Result")
-        if (results.length == 0) {
-            // Some callers/tests may hand us the DIDL document directly.
-            return if (xml.contains("DIDL-Lite", ignoreCase = true)) xml else null
-        }
-        // An empty <Result/> means "no children" — return null rather than parse an empty string.
-        val text = results.item(0).textContent?.trim()
-        return if (text.isNullOrEmpty()) null else text
-    }
+    /** One `<res>` entry, normalized so we can pick the best thumbnail vs. original. */
+    private data class ResEntry(
+        val url: String,
+        val size: Long,
+        val isThumb: Boolean,
+        val isRaw: Boolean,
+        val isImage: Boolean,
+    )
 
     private fun toPhoto(item: Element): CameraPhoto? {
         val id = item.getAttribute("id").ifBlank { return null }
         val title = firstChildTextByLocalName(item, "title") ?: id
 
-        var thumbnailUrl: String? = null
-        var jpegUrl: String? = null
-        var jpegSize: Long? = null
-        var jpegScore = -1L
-        var rawUrl: String? = null
-        var rawSize: Long? = null
+        val resources = buildResources(item)
+        if (resources.isEmpty()) return null
 
+        val images = resources.filter { it.isImage }
+        // Thumbnail: the tagged thumbnail if present, else the *smallest* image (never the 8 MB
+        // original — that was the cause of the slow grid).
+        val thumbnailUrl = resources.firstOrNull { it.isThumb }?.url
+            ?: images.minByOrNull { it.size }?.url
+
+        val fullJpeg = images.filter { !it.isThumb }.maxByOrNull { it.size }
+        val raw = resources.firstOrNull { it.isRaw }
+
+        return when {
+            fullJpeg != null ->
+                CameraPhoto(id, title, isRaw = false, thumbnailUrl, fullJpeg.url, fullJpeg.size.takeIf { it > 0 })
+            raw != null ->
+                CameraPhoto(id, title, isRaw = true, thumbnailUrl, raw.url, raw.size.takeIf { it > 0 })
+            else -> resources.maxByOrNull { it.size }?.let {
+                CameraPhoto(id, title, isRaw = false, thumbnailUrl, it.url, it.size.takeIf { s -> s > 0 })
+            }
+        }
+    }
+
+    private fun buildResources(item: Element): List<ResEntry> {
+        val out = mutableListOf<ResEntry>()
         val resList = item.getElementsByTagNameNS("*", "res")
         for (i in 0 until resList.length) {
             val res = resList.item(i) as Element
             val url = res.textContent?.trim().orEmpty()
             if (url.isEmpty()) continue
             val protocolInfo = res.getAttribute("protocolInfo").lowercase()
-            val size = res.getAttribute("size").toLongOrNull()
             val lowerUrl = url.lowercase()
-            // Prefer real byte size to rank "largest"; fall back to pixel area, else 0.
-            val score = size ?: resolutionArea(res.getAttribute("resolution"))
-
-            when {
-                protocolInfo.contains("_tn") || lowerUrl.contains("/dt") ->
-                    if (thumbnailUrl == null) thumbnailUrl = url
-                protocolInfo.contains("raw") || lowerUrl.endsWith(".rw2") -> {
-                    rawUrl = url
-                    rawSize = size
-                }
-                protocolInfo.contains("image/jpeg") || lowerUrl.endsWith(".jpg") ->
-                    if (score >= jpegScore) {
-                        jpegScore = score
-                        jpegUrl = url
-                        jpegSize = size
-                    }
-            }
+            val size = res.getAttribute("size").toLongOrNull()
+                ?: resolutionArea(res.getAttribute("resolution"))
+            val isThumb = protocolInfo.contains("_tn") || lowerUrl.contains("/dt")
+            val isRaw = protocolInfo.contains("raw") || lowerUrl.endsWith(".rw2")
+            val isImage = !isRaw &&
+                (protocolInfo.contains("image/") || lowerUrl.endsWith(".jpg") || lowerUrl.endsWith(".jpeg"))
+            out += ResEntry(url, size, isThumb, isRaw, isImage)
         }
-
-        // If no dedicated thumbnail was advertised, reuse the full JPEG (heavier, still works).
-        if (thumbnailUrl == null) thumbnailUrl = jpegUrl
-
-        return when {
-            jpegUrl != null -> CameraPhoto(id, title, isRaw = false, thumbnailUrl, jpegUrl, jpegSize)
-            rawUrl != null -> CameraPhoto(id, title, isRaw = true, thumbnailUrl, rawUrl, rawSize)
-            else -> null // an item with no downloadable image resource — skip it
-        }
+        return out
     }
 
     private fun resolutionArea(resolution: String): Long {
@@ -113,6 +138,11 @@ object DidlParser {
     private fun elementsByLocalName(doc: Document, local: String): List<Element> {
         val nodes = doc.getElementsByTagNameNS("*", local)
         return (0 until nodes.length).map { nodes.item(it) as Element }
+    }
+
+    private fun intField(doc: Document, local: String): Int? {
+        val nodes = doc.getElementsByTagNameNS("*", local)
+        return if (nodes.length > 0) nodes.item(0).textContent?.trim()?.toIntOrNull() else null
     }
 
     private fun parseXml(xml: String): Document {
