@@ -127,38 +127,40 @@ first on-device test before starting MVP2.
   `respectCacheHeaders(false)` + disk/memory cache. A single thumbnail is ~4.5 KB / ~50 ms; the whole
   638-thumb set is ~3 MB, so a **background warmer** pre-caches them all in ~30 s (disk cache persists).
 
-## 9. Current status & where to pick up (paused 2026-07-11, evening)
+## 9. Current status & where to pick up (paused 2026-07-11, night)
 
-**MVP1 + MVP2 are complete and verified on the real GX80 + Xiaomi 14T Pro.**
+**MVP1 + MVP2 + MVP3 are complete and verified on the real GX80 + Xiaomi 14T Pro.**
 
 - **MVP1 (transfer):** connect (holds), pair, browse all 638 photos, newest/oldest sort, fast cached
   thumbnails, tap-to-preview, long-press multi-select + select-all, single & bulk download.
 - **MVP2 (remote shutter):** three-tab bottom nav (Connect · Control · Photos) per the wireframe;
   tabs gate on connection; each tab enters its own camera mode (Control→record, Photos→playback).
   Control screen arms record mode, polls `getstate` (battery / mode / SD strip), and does **shutter
-  (`capture`)** and **video record (`video_recstart`/`video_recstop`)** — both verified on-device.
-  Disconnect moved to the Connect tab; the old gallery back-arrow is gone.
+  (`capture`)** and **video record (`video_recstart`/`video_recstop`)**. Disconnect moved to Connect.
+- **MVP3 (live view):** **UDP MJPEG live view** in the Control screen — `LiveViewStreamer` opens a
+  socket on port 49152, sends `mode=startstream&value=49152`, extracts the JPEG (after a ~178-byte
+  header) from each datagram, decodes and renders it (~30fps, smoother than the official app).
+  **Tap-to-focus** and the AF button work via **touch AF** (`mode=camctrl&type=touch&value=X/Y`).
+  **Live ISO read-out** from the `getinfo&type=curmenu` HTTP query.
 
 Build/run loop unchanged: `JAVA_HOME=<temurin17> ./gradlew installDebug` then relaunch; the phone
 connects to the Mac by USB (adb occasionally drops — `adb kill-server && adb start-server` recovers it).
 
-### MVP2 findings learned on-device (GX80 — important for MVP3)
-- `getstate` returns **battery / cammode / SD / rec status only — NOT exposure** (ISO/aperture/
-  shutter/EV). Those numbers ride the live-view stream header, so the Control screen's exposure grid
-  and live-view box are honest placeholders until MVP3.
-- **Standalone autofocus (`camcmd&value=oneshot_af`) returns `err_reject`** on the GX80. Lumix ties
-  remote AF to an **active live-view session** (and it needs the lens in AF, not MF). So AF can't work
-  until MVP3's stream exists. Mitigation shipped: the AF button explains this, and the shutter's
-  `capture` full-press autofocuses on its own anyway.
-- `material-icons-extended` was added for the wifi/focus/record/grid icons.
+### MVP3 findings learned on-device (GX80 — important for future work)
+- **Autofocus is `mode=camctrl&type=touch&value=X/Y` (0..1000 coords), NOT `camcmd&value=oneshot_af`**
+  — the latter always returns `err_reject` on the GX80. Touch AF returns `ok`. The AF button focuses
+  the centre (500/500); tapping the live view focuses that point. The `capture` full-press also AFs.
+- **Exposure read-out: only ISO is available**, and via `getinfo&type=curmenu` HTTP
+  (`<item id="menu_item_id_sensitivity" ... value="3200">`), **not** the live-view stream header.
+  Verified: the header does NOT encode ISO (stable across an ISO 200→3200 sweep). Aperture & shutter
+  are **not exposed** over Wi-Fi in Manual mode (dial-controlled), so the grid shows them as "—".
+  curmenu also carries WB / photo-style / AF-mode / metering / focusmode if ever wanted.
+- Live view is 4:3 VGA; `startstream` may return `err_reject` for the first second while the camera
+  settles into record mode — the streamer retries, so it's transient.
 
-### Next session — start here
-1. **MVP3 — live view** (unlocks the rest): open the UDP MJPEG stream
-   (`camcmd&value=startstream&value=49152`), render frames in the Control screen's live box, parse the
-   **exposure values from the stream header** to fill the ISO/aperture/shutter/EV grid, and — once the
-   stream is live — **`oneshot_af` should start working**, so wire the AF button to it for real.
-2. Deferred items: Wi-Fi scan/pick UI, ktlint in Gradle, RAW+JPEG pair handling, and the optional MVP1
-   warmer-pause-while-scrolling tweak.
+### Deferred / next
+1. Aperture & shutter read-out (would need P/A/S modes or deeper stream-header work — uncertain).
+2. Wi-Fi scan/pick UI, ktlint in Gradle, RAW+JPEG pair handling, optional MVP1 warmer-pause-on-scroll.
 
 ## Sources
 - Lumix GX80 protocol: https://github.com/cleverfox/lumixproto

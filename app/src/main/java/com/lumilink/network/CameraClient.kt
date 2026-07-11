@@ -1,6 +1,7 @@
 package com.lumilink.network
 
 import android.util.Log
+import com.lumilink.model.CameraExposure
 import com.lumilink.model.CameraStatus
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.delay
@@ -67,8 +68,23 @@ class CameraClient(
     /** Trigger the shutter. The camera must already be in record mode. */
     suspend fun capture() = sendCamCmd("capture")
 
-    /** Run a single autofocus cycle. Record mode only. */
+    /** Run a single autofocus cycle. Record mode only. NOTE: the GX80 rejects this (err_reject) —
+     *  it wants [touchAf] instead. Kept for reference / other bodies. */
     suspend fun autofocus() = sendCamCmd("oneshot_af")
+
+    /**
+     * Touch-to-focus: set the AF point at ([x], [y]) in the camera's 0..1000 live-view coordinate
+     * space and focus there. This is how Lumix bodies do remote AF (the live-view stream must be
+     * running). Focusing at the centre (500, 500) is the remote equivalent of a half-press.
+     */
+    suspend fun touchAf(x: Int, y: Int) {
+        val body = rawQuery("mode=camctrl&type=touch&value=$x/$y&value2=on")
+        val result = CamReplyParser.resultOf(body)
+        Log.i(TAG, "touchAf($x,$y) -> $body")
+        if (!result.equals("ok", ignoreCase = true)) {
+            throw CameraException("Camera rejected touch AF (result='$result')")
+        }
+    }
 
     /** Start / stop video recording. Record mode only. */
     suspend fun startVideoRecord() = sendCamCmd("video_recstart")
@@ -81,6 +97,33 @@ class CameraClient(
      */
     suspend fun fetchStatus(): CameraStatus =
         CameraStatusParser.parse(httpGetRaw("$baseUrl/cam.cgi?mode=getstate"))
+
+    /**
+     * Fetch the current exposure settings from the camera's menu state. The GX80 reports ISO here
+     * (aperture/shutter aren't exposed in Manual mode). The reply is ~20 KB of menu XML.
+     */
+    suspend fun fetchExposure(): CameraExposure =
+        CurMenuParser.parse(httpGetRaw("$baseUrl/cam.cgi?mode=getinfo&type=curmenu"))
+
+    /**
+     * Ask the camera to start pushing the live-view MJPEG stream over UDP to [port] on this device.
+     * Record mode must already be active. Open the UDP socket *before* calling this so no early
+     * frames are missed.
+     */
+    suspend fun startStream(port: Int) {
+        val body = rawQuery("mode=startstream&value=$port")
+        val result = CamReplyParser.resultOf(body)
+        Log.i(TAG, "startstream($port) -> $body")
+        if (!result.equals("ok", ignoreCase = true)) {
+            throw CameraException("Camera rejected startstream (result='$result')")
+        }
+    }
+
+    /** Best-effort stop of the live-view stream (not all firmwares expose it; ignore failures). */
+    suspend fun stopStream() {
+        runCatching { rawQuery("mode=stopstream") }
+            .onFailure { Log.i(TAG, "stopstream failed (ignored): ${it.message}") }
+    }
 
     /**
      * Escape hatch for on-device protocol probing: issue an arbitrary `cam.cgi` query and return

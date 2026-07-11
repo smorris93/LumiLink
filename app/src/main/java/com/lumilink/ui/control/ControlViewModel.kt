@@ -1,14 +1,19 @@
 package com.lumilink.ui.control
 
+import android.graphics.BitmapFactory
 import android.util.Log
+import androidx.compose.ui.graphics.ImageBitmap
+import androidx.compose.ui.graphics.asImageBitmap
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.ViewModelProvider
 import androidx.lifecycle.viewModelScope
 import androidx.lifecycle.viewmodel.initializer
 import androidx.lifecycle.viewmodel.viewModelFactory
 import com.lumilink.di.AppContainer
+import com.lumilink.model.CameraExposure
 import com.lumilink.model.CameraStatus
 import com.lumilink.network.CameraClient
+import com.lumilink.network.LiveViewStreamer
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -33,7 +38,10 @@ class ControlViewModel(
     data class UiState(
         /** True once the camera has acknowledged record mode; controls are enabled only then. */
         val recordModeReady: Boolean = false,
+        /** True once live-view frames are arriving. */
+        val liveViewActive: Boolean = false,
         val status: CameraStatus = CameraStatus.UNKNOWN,
+        val exposure: CameraExposure = CameraExposure.UNKNOWN,
         val busy: Boolean = false,
         /** Transient one-shot text for a snackbar (capture confirmation, errors). */
         val message: String? = null,
@@ -44,10 +52,17 @@ class ControlViewModel(
     private val _uiState = MutableStateFlow(UiState())
     val uiState: StateFlow<UiState> = _uiState.asStateFlow()
 
-    private var pollJob: Job? = null
+    /** The latest decoded live-view frame, or null before the stream is up / after it stops. */
+    private val _liveFrame = MutableStateFlow<ImageBitmap?>(null)
+    val liveFrame: StateFlow<ImageBitmap?> = _liveFrame.asStateFlow()
 
-    /** Called when the Control screen becomes visible. Enters record mode, then polls state. */
+    private val streamer = LiveViewStreamer(cameraClient)
+    private var pollJob: Job? = null
+    private var streamJob: Job? = null
+
+    /** Called when the Control screen becomes visible. Enters record mode, polls state, streams live view. */
     fun start() {
+        startLiveView()
         if (pollJob?.isActive == true) return
         pollJob = viewModelScope.launch {
             try {
@@ -74,6 +89,12 @@ class ControlViewModel(
                 } catch (e: Exception) {
                     Log.i(TAG, "status poll failed: ${e.message}")
                 }
+                try {
+                    val exposure = cameraClient.fetchExposure()
+                    _uiState.update { it.copy(exposure = exposure) }
+                } catch (e: Exception) {
+                    Log.i(TAG, "exposure poll failed: ${e.message}")
+                }
                 delay(POLL_INTERVAL_MS)
             }
         }
@@ -83,23 +104,61 @@ class ControlViewModel(
     fun stop() {
         pollJob?.cancel()
         pollJob = null
+        streamJob?.cancel()
+        streamJob = null
+        _liveFrame.value = null
+        _uiState.update { it.copy(liveViewActive = false) }
+    }
+
+    /**
+     * Runs the live-view stream, retrying while the screen is up: the camera may still be settling
+     * into record mode when we first ask, so a rejected startstream is transient, not fatal.
+     */
+    private fun startLiveView() {
+        if (streamJob?.isActive == true) return
+        streamJob = viewModelScope.launch {
+            while (isActive) {
+                try {
+                    streamer.run { frame -> onLiveFrame(frame) }
+                } catch (e: Exception) {
+                    Log.i(TAG, "live view stream error (will retry): ${e.message}")
+                    _uiState.update { it.copy(liveViewActive = false) }
+                    delay(LIVE_RETRY_MS)
+                }
+            }
+        }
+    }
+
+    /** Decode a JPEG frame to a bitmap on the streamer's IO thread and publish it. */
+    private fun onLiveFrame(jpeg: ByteArray) {
+        val bitmap = BitmapFactory.decodeByteArray(jpeg, 0, jpeg.size) ?: return
+        _liveFrame.value = bitmap.asImageBitmap()
+        if (!_uiState.value.liveViewActive) _uiState.update { it.copy(liveViewActive = true) }
     }
 
     fun capture() = runCommand("Captured") { cameraClient.capture() }
 
-    fun autofocus() = runCommand(
-        successMessage = "Focused",
-        // The GX80 rejects standalone remote AF (err_reject) unless live view is streaming, or when
-        // the lens is in manual focus. Explain rather than show a raw error; the shutter AFs anyway.
-        errorMapper = { raw ->
-            if (raw.contains("err_reject", ignoreCase = true)) {
-                "Autofocus needs live view running (arrives in MVP3) or the lens set to AF. " +
-                    "The shutter still autofocuses before each shot."
-            } else {
-                null
-            }
-        },
-    ) { cameraClient.autofocus() }
+    /** AF button: focus at the centre via touch AF (the GX80 rejects the blind oneshot_af command). */
+    fun autofocus() = focusAt(0.5f, 0.5f)
+
+    /**
+     * Touch-to-focus at a point in the live-view image, given as 0..1 fractions of width/height.
+     * Maps to the camera's 0..1000 coordinate space.
+     */
+    fun focusAt(xFraction: Float, yFraction: Float) {
+        val x = (xFraction * 1000f).toInt().coerceIn(0, 1000)
+        val y = (yFraction * 1000f).toInt().coerceIn(0, 1000)
+        runCommand(
+            successMessage = "Focusing…",
+            errorMapper = { raw ->
+                if (raw.contains("err_reject", ignoreCase = true)) {
+                    "Focus rejected — set the lens/body to AF (not MF). The shutter autofocuses anyway."
+                } else {
+                    null
+                }
+            },
+        ) { cameraClient.touchAf(x, y) }
+    }
 
     fun toggleVideoRecord() {
         if (_uiState.value.videoRecording) {
@@ -142,6 +201,7 @@ class ControlViewModel(
     companion object {
         private const val TAG = "ControlViewModel"
         private const val POLL_INTERVAL_MS = 2_000L
+        private const val LIVE_RETRY_MS = 1_500L
 
         fun factory(container: AppContainer): ViewModelProvider.Factory = viewModelFactory {
             initializer {

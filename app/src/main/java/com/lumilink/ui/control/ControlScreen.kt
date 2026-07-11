@@ -1,8 +1,11 @@
 package com.lumilink.ui.control
 
+import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.gestures.detectTapGestures
+import androidx.compose.foundation.layout.offset
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -31,19 +34,28 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.ImageBitmap
+import androidx.compose.ui.input.pointer.pointerInput
+import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.text.font.FontFamily
+import androidx.compose.ui.unit.IntOffset
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.lifecycle.viewmodel.compose.viewModel
+import com.lumilink.model.CameraExposure
 import com.lumilink.model.CameraStatus
 import com.lumilink.ui.appContainer
+import kotlinx.coroutines.delay
 
 /**
  * Control screen (MVP2): remote shutter, autofocus and video record, with a live camera-status
@@ -55,6 +67,7 @@ fun ControlScreen() {
     val container = appContainer()
     val viewModel: ControlViewModel = viewModel(factory = ControlViewModel.factory(container))
     val state by viewModel.uiState.collectAsStateWithLifecycle()
+    val liveFrame by viewModel.liveFrame.collectAsStateWithLifecycle()
 
     // Poll only while this screen is on-screen; stop when the user switches tabs.
     DisposableEffect(Unit) {
@@ -86,8 +99,8 @@ fun ControlScreen() {
                 .padding(16.dp),
             verticalArrangement = Arrangement.spacedBy(14.dp),
         ) {
-            LiveViewPlaceholder()
-            ExposureGrid()
+            LiveView(frame = liveFrame, onFocusTap = viewModel::focusAt)
+            ExposureGrid(state.exposure)
             StatusStrip(state.status)
             Box(Modifier.weight(1f))
             ControlsRow(
@@ -98,9 +111,8 @@ fun ControlScreen() {
                 onToggleVideo = viewModel::toggleVideoRecord,
             )
             Text(
-                text = "Live view, exposure read-out & standalone autofocus arrive in MVP3 " +
-                    "(the camera needs the live stream running for remote AF). The shutter " +
-                    "autofocuses on its own.",
+                text = "Tap the live view to focus there; AF focuses the centre. ISO is live; the " +
+                    "GX80 doesn't expose aperture/shutter over Wi-Fi in Manual mode.",
                 style = MaterialTheme.typography.bodySmall,
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
                 textAlign = TextAlign.Center,
@@ -123,34 +135,84 @@ private fun ConnectedChip(ready: Boolean) {
     }
 }
 
-/** Dark 3:2 placeholder standing in for the future MJPEG live-view feed. */
+/**
+ * The live-view feed. Shows the latest MJPEG frame once streaming (matching its aspect ratio so
+ * tap coordinates map exactly), or a waiting placeholder. Tapping the image focuses at that point.
+ */
 @Composable
-private fun LiveViewPlaceholder() {
+private fun LiveView(frame: ImageBitmap?, onFocusTap: (Float, Float) -> Unit) {
+    var tapPoint by remember { mutableStateOf<Offset?>(null) }
+    tapPoint?.let { LaunchedEffect(it) { delay(900); tapPoint = null } }
+
+    val aspect = if (frame != null && frame.height > 0) frame.width.toFloat() / frame.height else 3f / 2f
     Surface(
         color = Color(0xFF0B0D0F),
         shape = RoundedCornerShape(14.dp),
-        modifier = Modifier.fillMaxWidth().aspectRatio(3f / 2f),
+        modifier = Modifier.fillMaxWidth().aspectRatio(aspect),
     ) {
-        Box(contentAlignment = Alignment.Center) {
-            Box(
-                Modifier.size(52.dp)
-                    .border(1.5.dp, Color.White.copy(alpha = 0.5f), RoundedCornerShape(6.dp)),
-            )
-            Text(
-                text = "live view · MJPEG :49152",
-                color = Color.White.copy(alpha = 0.5f),
-                fontFamily = FontFamily.Monospace,
-                fontSize = 10.sp,
-                modifier = Modifier.align(Alignment.BottomEnd).padding(10.dp),
-            )
+        Box(
+            contentAlignment = Alignment.Center,
+            modifier = Modifier
+                .fillMaxSize()
+                .pointerInput(frame != null) {
+                    if (frame != null) {
+                        detectTapGestures { offset ->
+                            tapPoint = offset
+                            onFocusTap(
+                                (offset.x / size.width).coerceIn(0f, 1f),
+                                (offset.y / size.height).coerceIn(0f, 1f),
+                            )
+                        }
+                    }
+                },
+        ) {
+            if (frame != null) {
+                Image(
+                    bitmap = frame,
+                    contentDescription = "Live view",
+                    contentScale = ContentScale.Fit,
+                    modifier = Modifier.fillMaxSize(),
+                )
+                tapPoint?.let { pt ->
+                    val reticle = 44.dp
+                    Box(
+                        Modifier
+                            // Anchor top-left, not the box centre, so the offset lands the reticle
+                            // exactly on the tap point.
+                            .align(Alignment.TopStart)
+                            .offset { IntOffset((pt.x).toInt() - reticle.roundToPx() / 2, (pt.y).toInt() - reticle.roundToPx() / 2) }
+                            .size(reticle)
+                            .border(2.dp, MaterialTheme.colorScheme.primary, RoundedCornerShape(4.dp)),
+                    )
+                }
+            } else {
+                Box(
+                    Modifier.size(52.dp)
+                        .border(1.5.dp, Color.White.copy(alpha = 0.5f), RoundedCornerShape(6.dp)),
+                )
+                Text(
+                    text = "live view · MJPEG :49152 · waiting…",
+                    color = Color.White.copy(alpha = 0.5f),
+                    fontFamily = FontFamily.Monospace,
+                    fontSize = 10.sp,
+                    modifier = Modifier.align(Alignment.BottomEnd).padding(10.dp),
+                )
+            }
         }
     }
 }
 
-/** Four-up ISO / Aperture / Shutter / EV grid. Values are placeholders until live view lands. */
+/** Exposure read-out. Shows only the fields the camera actually reports — ISO always (from
+ *  curmenu); aperture/shutter/EV appear automatically if the body ever exposes them (it doesn't in
+ *  Manual mode), so there are no dead "—" cells. */
 @Composable
-private fun ExposureGrid() {
-    val cells = listOf("ISO" to "—", "Aperture" to "—", "Shutter" to "—", "EV" to "—")
+private fun ExposureGrid(exposure: CameraExposure) {
+    val cells = buildList {
+        add("ISO" to (exposure.iso ?: "—"))
+        exposure.aperture?.let { add("Aperture" to "f/$it") }
+        exposure.shutter?.let { add("Shutter" to it) }
+        exposure.exposureComp?.let { add("EV" to it) }
+    }
     Surface(
         shape = RoundedCornerShape(12.dp),
         color = MaterialTheme.colorScheme.surfaceVariant,
