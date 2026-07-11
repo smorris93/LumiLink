@@ -2,7 +2,7 @@
 
 > Durable context doc. Captures the idea, feasibility findings, protocol details, the
 > Android networking approach, architecture direction, and next steps, so work can resume
-> even if the chat session is lost. Last updated: 2026-07-09.
+> even if the chat session is lost. Last updated: 2026-07-11.
 
 ## 1. The idea
 
@@ -101,7 +101,8 @@ first on-device test before starting MVP2.
 - Key files: `network/CameraNetworkManager` (WiFi bind), `network/CameraClient` (cam.cgi),
   `network/SsdpDiscovery` + `DeviceDescriptionParser` + `DidlParser`, `data/PhotoRepository`
   (recursive DLNA browse), `data/PhotoDownloader` + `MediaStoreSaver`, `service/CameraConnectionService`
-  (foreground), `ui/connect/*`, `ui/gallery/*`.
+  (foreground), `ui/connect/*`, `ui/gallery/*`. MVP2 adds `ui/control/*` (Control screen + VM),
+  `model/CameraStatus` + `network/CameraStatusParser` (getstate), and the bottom-nav in `ui/LumiLinkNavHost`.
 - Tests: JVM unit tests for `CamReplyParser` and `DidlParser` (all passing).
 - Build: `JAVA_HOME=<temurin17> ./gradlew assembleDebug` → `app/build/outputs/apk/debug/app-debug.apk` (~27 MB).
 - Reader's guide for the code: `docs/kotlin-android-for-java-devs.md`.
@@ -126,24 +127,38 @@ first on-device test before starting MVP2.
   `respectCacheHeaders(false)` + disk/memory cache. A single thumbnail is ~4.5 KB / ~50 ms; the whole
   638-thumb set is ~3 MB, so a **background warmer** pre-caches them all in ~30 s (disk cache persists).
 
-## 9. Current status & where to pick up (paused 2026-07-09, evening)
+## 9. Current status & where to pick up (paused 2026-07-11, evening)
 
-**MVP1 is complete, verified on the real GX80 + Xiaomi 14T Pro, and polished.** Working end-to-end:
-connect (holds), pair, browse all 638 photos, newest/oldest sort, fast cached thumbnails,
-tap-to-preview full image, long-press multi-select + select-all, single & bulk download.
+**MVP1 + MVP2 are complete and verified on the real GX80 + Xiaomi 14T Pro.**
 
-Committed: `5407b1d` (MVP1 working) + a follow-up commit for the polish (preview/select-all/warmer).
+- **MVP1 (transfer):** connect (holds), pair, browse all 638 photos, newest/oldest sort, fast cached
+  thumbnails, tap-to-preview, long-press multi-select + select-all, single & bulk download.
+- **MVP2 (remote shutter):** three-tab bottom nav (Connect · Control · Photos) per the wireframe;
+  tabs gate on connection; each tab enters its own camera mode (Control→record, Photos→playback).
+  Control screen arms record mode, polls `getstate` (battery / mode / SD strip), and does **shutter
+  (`capture`)** and **video record (`video_recstart`/`video_recstop`)** — both verified on-device.
+  Disconnect moved to the Connect tab; the old gallery back-arrow is gone.
+
 Build/run loop unchanged: `JAVA_HOME=<temurin17> ./gradlew installDebug` then relaunch; the phone
 connects to the Mac by USB (adb occasionally drops — `adb kill-server && adb start-server` recovers it).
 
+### MVP2 findings learned on-device (GX80 — important for MVP3)
+- `getstate` returns **battery / cammode / SD / rec status only — NOT exposure** (ISO/aperture/
+  shutter/EV). Those numbers ride the live-view stream header, so the Control screen's exposure grid
+  and live-view box are honest placeholders until MVP3.
+- **Standalone autofocus (`camcmd&value=oneshot_af`) returns `err_reject`** on the GX80. Lumix ties
+  remote AF to an **active live-view session** (and it needs the lens in AF, not MF). So AF can't work
+  until MVP3's stream exists. Mitigation shipped: the AF button explains this, and the shutter's
+  `capture` full-press autofocuses on its own anyway.
+- `material-icons-extended` was added for the wifi/focus/record/grid icons.
+
 ### Next session — start here
-1. **Optional MVP1 refinement discussed but not built:** pause the background thumbnail warmer while
-   the user is actively scrolling (resume when idle) — only if scrolling ever feels like it competes.
-2. **MVP2 — remote shutter** (the next stage): add a Control screen + `ControlViewModel`; switch camera
-   to record mode (`camcmd&value=recmode`); capture (`camcmd&value=capture`), AF (`oneshot_af`);
-   poll `getstate` for ISO/aperture/shutter/EV read-out. Small compared to MVP1; no thumbnail-style
-   rabbit holes expected.
-3. Later: MVP3 (live view — UDP MJPEG), and the deferred items above (Wi-Fi scan, ktlint, RAW+JPEG).
+1. **MVP3 — live view** (unlocks the rest): open the UDP MJPEG stream
+   (`camcmd&value=startstream&value=49152`), render frames in the Control screen's live box, parse the
+   **exposure values from the stream header** to fill the ISO/aperture/shutter/EV grid, and — once the
+   stream is live — **`oneshot_af` should start working**, so wire the AF button to it for real.
+2. Deferred items: Wi-Fi scan/pick UI, ktlint in Gradle, RAW+JPEG pair handling, and the optional MVP1
+   warmer-pause-while-scrolling tweak.
 
 ## Sources
 - Lumix GX80 protocol: https://github.com/cleverfox/lumixproto

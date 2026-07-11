@@ -53,6 +53,15 @@ class GalleryViewModel(
         load()
     }
 
+    /**
+     * Called when the Photos tab becomes visible. If photos are already loaded, re-assert playback
+     * mode (a sibling tab may have put the camera in record mode); the first load handles mode itself.
+     */
+    fun onScreenEntered() {
+        if (_uiState.value.allPhotos.isEmpty()) return
+        viewModelScope.launch { runCatching { photoRepository.ensurePlaybackMode() } }
+    }
+
     fun load() {
         _uiState.update { it.copy(loading = true, error = null) }
         viewModelScope.launch {

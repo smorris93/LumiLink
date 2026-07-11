@@ -20,6 +20,7 @@ import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Text
@@ -44,13 +45,12 @@ import com.lumilink.ui.appContainer
 
 /**
  * Connect screen — enter the camera hotspot's SSID + password (prefilled once saved), request the
- * Wi-Fi permission if needed, then connect. Navigates on to the gallery once connected.
- *
- * @param onConnected called when the camera link is established.
+ * Wi-Fi permission if needed, then connect. Navigation to Control/Photos is driven by the parent
+ * nav host reacting to the connection state; this screen just connects and disconnects.
  */
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
-fun ConnectScreen(onConnected: () -> Unit) {
+fun ConnectScreen() {
     val container = appContainer()
     val viewModel: ConnectViewModel = viewModel(factory = ConnectViewModel.factory(container))
 
@@ -69,11 +69,7 @@ fun ConnectScreen(onConnected: () -> Unit) {
         }
     }
 
-    // Advance to the gallery once we're connected.
-    LaunchedEffect(state) {
-        if (state is ConnectionState.Connected) onConnected()
-    }
-
+    val connected = state is ConnectionState.Connected
     val context = LocalContext.current
     // Connecting to a Wi-Fi network with a specifier requires this runtime permission:
     // NEARBY_WIFI_DEVICES on Android 13+, otherwise fine location.
@@ -131,13 +127,22 @@ fun ConnectScreen(onConnected: () -> Unit) {
                 modifier = Modifier.fillMaxWidth(),
             )
 
-            Button(
-                // Password is optional — the camera hotspot may be an open network.
-                onClick = attemptConnect,
-                enabled = !connecting && ssid.isNotBlank(),
-                modifier = Modifier.fillMaxWidth(),
-            ) {
-                Text(if (connecting) "Connecting…" else "Connect to camera")
+            if (connected) {
+                OutlinedButton(
+                    onClick = viewModel::disconnect,
+                    modifier = Modifier.fillMaxWidth(),
+                ) {
+                    Text("Disconnect")
+                }
+            } else {
+                Button(
+                    // Password is optional — the camera hotspot may be an open network.
+                    onClick = attemptConnect,
+                    enabled = !connecting && ssid.isNotBlank(),
+                    modifier = Modifier.fillMaxWidth(),
+                ) {
+                    Text(if (connecting) "Connecting…" else "Connect to camera")
+                }
             }
 
             Spacer(Modifier.height(4.dp))

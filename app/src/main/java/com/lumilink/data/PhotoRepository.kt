@@ -29,6 +29,9 @@ class PhotoRepository(
     private val httpClient: OkHttpClient = defaultHttpClient(),
 ) {
 
+    /** Re-assert playback mode — cheap, and needed if another screen switched the camera to record. */
+    suspend fun ensurePlaybackMode() = withContext(Dispatchers.IO) { cameraClient.enterPlaybackMode() }
+
     suspend fun listPhotos(): List<CameraPhoto> = withContext(Dispatchers.IO) {
         // Handshake + switch to playback so the media server exposes stored photos.
         cameraClient.pair()

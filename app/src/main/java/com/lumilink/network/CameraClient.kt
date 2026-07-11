@@ -1,6 +1,7 @@
 package com.lumilink.network
 
 import android.util.Log
+import com.lumilink.model.CameraStatus
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.withContext
@@ -62,6 +63,30 @@ class CameraClient(
 
     /** Switch the camera to record mode (required before capture/live view — used from MVP2). */
     suspend fun enterRecordMode() = sendCamCmd("recmode")
+
+    /** Trigger the shutter. The camera must already be in record mode. */
+    suspend fun capture() = sendCamCmd("capture")
+
+    /** Run a single autofocus cycle. Record mode only. */
+    suspend fun autofocus() = sendCamCmd("oneshot_af")
+
+    /** Start / stop video recording. Record mode only. */
+    suspend fun startVideoRecord() = sendCamCmd("video_recstart")
+    suspend fun stopVideoRecord() = sendCamCmd("video_recstop")
+
+    /**
+     * Poll the camera's state (battery, rec/play mode, SD status, video-recording flag). Note the
+     * GX80's `getstate` does NOT include exposure (ISO/aperture/shutter/EV) — those ride the
+     * live-view stream header (MVP3). Returns a best-effort parse; unknown fields stay null.
+     */
+    suspend fun fetchStatus(): CameraStatus =
+        CameraStatusParser.parse(httpGetRaw("$baseUrl/cam.cgi?mode=getstate"))
+
+    /**
+     * Escape hatch for on-device protocol probing: issue an arbitrary `cam.cgi` query and return
+     * the raw body (e.g. `mode=getinfo&type=curmenu`). Not used in normal flows.
+     */
+    suspend fun rawQuery(query: String): String = httpGetRaw("$baseUrl/cam.cgi?$query")
 
     private suspend fun sendCamCmd(value: String) {
         val body = httpGetRaw("$baseUrl/cam.cgi?mode=camcmd&value=$value")

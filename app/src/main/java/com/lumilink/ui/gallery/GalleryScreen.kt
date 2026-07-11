@@ -25,7 +25,6 @@ import androidx.compose.foundation.lazy.grid.rememberLazyGridState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.filled.Check
 import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.filled.Done
@@ -82,10 +81,14 @@ import kotlinx.coroutines.flow.distinctUntilChanged
  */
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
-fun GalleryScreen(onBack: () -> Unit) {
+fun GalleryScreen() {
     val container = appContainer()
     val viewModel: GalleryViewModel = viewModel(factory = GalleryViewModel.factory(container))
     val state by viewModel.uiState.collectAsStateWithLifecycle()
+
+    // Returning to this tab (e.g. from Control's record mode) re-asserts playback mode so the
+    // media server serves photos; a no-op on the very first load, which enters it itself.
+    LaunchedEffect(Unit) { viewModel.onScreenEntered() }
 
     val snackbarHostState = remember { SnackbarHostState() }
     LaunchedEffect(state.statusMessage) {
@@ -138,11 +141,10 @@ fun GalleryScreen(onBack: () -> Unit) {
     var previewPhoto by remember { mutableStateOf<CameraPhoto?>(null) }
     val selectionMode = state.selectedIds.isNotEmpty()
 
-    // System / gesture back mirrors the top-bar navigation icon: leave selection first if active,
-    // otherwise go back (which disconnects). Disabled while previewing so the preview's own
-    // BackHandler closes it instead.
-    BackHandler(enabled = previewPhoto == null) {
-        if (selectionMode) viewModel.clearSelection() else onBack()
+    // System / gesture back leaves an active selection first (like the top-bar Close). Otherwise
+    // it falls through to normal nav. Disabled while previewing so the preview closes itself.
+    BackHandler(enabled = selectionMode && previewPhoto == null) {
+        viewModel.clearSelection()
     }
 
     Scaffold(
@@ -164,11 +166,6 @@ fun GalleryScreen(onBack: () -> Unit) {
             } else {
                 TopAppBar(
                     title = { Text("Photos on camera") },
-                    navigationIcon = {
-                        IconButton(onClick = onBack) {
-                            Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = "Back")
-                        }
-                    },
                     actions = {
                         IconButton(onClick = viewModel::load, enabled = !state.loading) {
                             Icon(Icons.Default.Refresh, contentDescription = "Reload")
