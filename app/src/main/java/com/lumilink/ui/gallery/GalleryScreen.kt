@@ -138,6 +138,13 @@ fun GalleryScreen(onBack: () -> Unit) {
     var previewPhoto by remember { mutableStateOf<CameraPhoto?>(null) }
     val selectionMode = state.selectedIds.isNotEmpty()
 
+    // System / gesture back mirrors the top-bar navigation icon: leave selection first if active,
+    // otherwise go back (which disconnects). Disabled while previewing so the preview's own
+    // BackHandler closes it instead.
+    BackHandler(enabled = previewPhoto == null) {
+        if (selectionMode) viewModel.clearSelection() else onBack()
+    }
+
     Scaffold(
         topBar = {
             if (selectionMode) {

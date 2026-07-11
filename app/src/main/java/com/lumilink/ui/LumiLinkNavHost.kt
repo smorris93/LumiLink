@@ -20,12 +20,19 @@ object Routes {
 @Composable
 fun LumiLinkNavHost() {
     val navController = rememberNavController()
+    val container = appContainer()
     NavHost(navController = navController, startDestination = Routes.CONNECT) {
         composable(Routes.CONNECT) {
             ConnectScreen(onConnected = { navController.navigate(Routes.GALLERY) })
         }
         composable(Routes.GALLERY) {
-            GalleryScreen(onBack = { navController.popBackStack() })
+            GalleryScreen(onBack = {
+                // Disconnect before returning. Otherwise the network manager is still
+                // Connected, and Connect's "navigate once connected" effect would immediately
+                // bounce us straight back to the gallery.
+                container.cameraNetworkManager.disconnect()
+                navController.popBackStack()
+            })
         }
     }
 }
